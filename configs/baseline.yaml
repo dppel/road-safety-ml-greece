@@ -1,12 +1,12 @@
 project:
   name: "road-safety-ml-greece"
-  version: "1.0.0"
+  version: "1.1.0"
   random_seed: 42
+  data_policy: "100% Official ELSTAT Aggregated Statistics (Zero Synthetic Data)"
 
 data:
   regional_panel_path: "data/elstat_regional_monthly_panel_2021_2025.csv"
   national_annual_path: "data/elstat_national_annual_2015_2024.csv"
-  synthetic_micro_path: "data/synthetic_benchmark_collisions.csv"
   train_end_year: 2023
   val_year: 2024
   test_year: 2025
@@ -18,12 +18,18 @@ regional_task:
   high_ksi_threshold: 0.16
   numeric_features:
     - "month"
+    - "month_sin"
+    - "month_cos"
+    - "is_summer"
     - "urban_ratio"
     - "motorcycle_share"
     - "lag_1m_ksi_rate"
+    - "lag_2m_ksi_rate"
     - "lag_12m_ksi_rate"
     - "rolling_3m_ksi_rate"
+    - "yoy_ksi_rate_diff"
     - "lag_1m_total_accidents"
+    - "lag_12m_total_accidents"
   categorical_features:
     - "region"
   forbidden_leakage_columns:
@@ -34,57 +40,27 @@ regional_task:
     - "ksi_severity_rate"
     - "total_accidents"
 
-micro_task:
-  unit_of_observation: "single_collision_event_synthetic_benchmark"
-  target_column: "target_ksi"
-  numeric_features:
-    - "month"
-    - "day_of_week"
-    - "hour"
-    - "speed_limit"
-    - "is_junction"
-    - "number_of_vehicles"
-    - "has_motorcycle"
-    - "has_pedestrian"
-    - "has_heavy_vehicle"
-    - "min_driver_age"
-    - "max_vehicle_age"
-  categorical_features:
-    - "region"
-    - "area_type"
-    - "road_type"
-    - "light_conditions"
-    - "weather_conditions"
-    - "road_surface_conditions"
-  forbidden_leakage_columns:
-    - "number_of_casualties"
-    - "fatal_casualties"
-    - "serious_casualties"
-    - "slight_casualties"
-    - "did_police_officer_attend_scene_of_accident"
-    - "collision_severity"
-
 models:
   dummy:
     strategy: "prior"
   decision_tree:
-    max_depth: 5
-    min_samples_leaf: 20
+    max_depth: 4
+    min_samples_leaf: 15
     class_weight: "balanced"
   random_forest:
     n_estimators: 200
-    max_depth: 8
-    min_samples_leaf: 15
+    max_depth: 6
+    min_samples_leaf: 10
     class_weight: "balanced"
   hist_gradient_boosting:
-    max_iter: 250
+    max_iter: 200
     learning_rate: 0.04
-    max_leaf_nodes: 31
-    min_samples_leaf: 20
+    max_leaf_nodes: 15
+    min_samples_leaf: 15
     class_weight: "balanced"
   xgboost:
-    n_estimators: 250
+    n_estimators: 200
     learning_rate: 0.04
-    max_depth: 5
+    max_depth: 4
     subsample: 0.8
     colsample_bytree: 0.8

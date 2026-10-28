@@ -1,11 +1,10 @@
 """
-Unit Tests for Feature Engineering & Target Immutability (`test_features.py`)
-=============================================================================
+Unit Tests for Official ELSTAT Feature Engineering & Target Immutability (`test_features.py`)
+=============================================================================================
 Verifies that:
   1. Regional lag features strictly use historical months (no look-ahead leakage).
-  2. Event-level feature engineering produces bounded cyclical encodings.
-  3. Target vector `y` is NEVER modified by `CollisionFeatureEngineer` or
-     `generate_proxy_waze_features_strictly_on_X`.
+  2. Cyclical time encodings (`month_sin`, `month_cos`) are bounded in [-1, 1].
+  3. Target vector `y` is NEVER modified during feature engineering (`assert_target_immutable`).
 """
 
 import numpy as np
@@ -14,11 +13,10 @@ import pytest
 
 from road_safety.data_validation import assert_target_immutable
 from road_safety.features import (
-    CollisionFeatureEngineer,
+    TemporalCyclicalTransformer,
     build_regional_panel_features,
     extract_regional_X_y,
 )
-from road_safety.waze_ablation import generate_proxy_waze_features_strictly_on_X
 
 
 def test_target_immutability_guard_detects_target_mutation():
@@ -29,41 +27,24 @@ def test_target_immutability_guard_detects_target_mutation():
         assert_target_immutable(y_orig, y_mutated)
 
 
-def test_waze_proxy_ablation_never_modifies_target_y():
+def test_temporal_cyclical_transformer_bounds_and_target_immutability():
     df = pd.DataFrame(
         {
             "region": ["Attica (Αττική)", "Crete (Κρήτη)", "Peloponnese (Πελοπόννησος)"],
-            "month": [1, 7, 8],
-            "day_of_week": [2, 6, 7],
-            "hour": [8, 23, 2],
-            "area_type": [1, 2, 2],
-            "road_type": [6, 1, 3],
-            "speed_limit": [50, 90, 90],
-            "is_junction": [1, 0, 0],
-            "light_conditions": [1, 6, 6],
-            "weather_conditions": [1, 1, 2],
-            "road_surface_conditions": [1, 1, 2],
-            "number_of_vehicles": [2, 1, 2],
-            "has_motorcycle": [1, 1, 0],
-            "has_pedestrian": [0, 0, 0],
-            "has_heavy_vehicle": [0, 0, 1],
-            "min_driver_age": [34, 21, 55],
-            "max_vehicle_age": [8, 14, 12],
+            "month": [1, 7, 12],
+            "urban_ratio": [0.88, 0.42, 0.38],
         }
     )
-    y_true = pd.Series([0, 1, 1], name="target_ksi")
+    y_true = pd.Series([0, 1, 1], name="target_high_ksi")
     y_snapshot = y_true.to_numpy().copy()
 
-    fe = CollisionFeatureEngineer()
-    X_fe = fe.fit_transform(df)
-    X_waze = generate_proxy_waze_features_strictly_on_X(X_fe, seed=42)
+    tr = TemporalCyclicalTransformer()
+    X_trans = tr.fit_transform(df)
 
     assert_target_immutable(y_snapshot, y_true)
-    assert "waze_flow_speed_kmh" in X_waze.columns
-    assert "waze_jam_level" in X_waze.columns
-    assert "target_ksi" not in X_waze.columns
-    assert (X_waze["hour_sin"].between(-1.0, 1.0)).all()
-    assert (X_waze["hour_cos"].between(-1.0, 1.0)).all()
+    assert (X_trans["month_sin"].between(-1.0, 1.0)).all()
+    assert (X_trans["month_cos"].between(-1.0, 1.0)).all()
+    assert list(X_trans["is_summer"]) == [0, 1, 0]
 
 
 def test_regional_panel_features_exclude_contemporaneous_outcomes():

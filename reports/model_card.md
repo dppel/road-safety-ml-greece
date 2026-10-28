@@ -1,63 +1,59 @@
-# Model Card — Road Safety ML Greece (v1.0.0)
+# Model Card — Road Safety ML Greece (v1.1.0 — 100% Official ELSTAT Data)
 
 ## 1. Model Details
 * **Project Name**: `road-safety-ml-greece`
-* **Version**: `1.0.0` (October 2026)
+* **Version**: `1.1.0` (October 2026)
+* **Data Provenance Policy**: **100% Official ELSTAT Aggregated Statistics (`SDT04`) — Zero Synthetic Data**
 * **Model Types Evaluated**:
   * `DummyClassifier (Prior)` — Naive statistical baseline
-  * `DecisionTreeClassifier` — Interpretable shallow tree (`max_depth=5`)
-  * `RandomForestClassifier` — Bagged tree ensemble (`n_estimators=200`, `max_depth=8`)
-  * `HistGradientBoostingClassifier` — Native scikit-learn histogram gradient boosting (`max_iter=250`, `learning_rate=0.04`)
-  * `XGBClassifier` — Regularized gradient boosted trees (`n_estimators=250`, `max_depth=5`, `learning_rate=0.04`)
+  * `DecisionTreeClassifier` — Interpretable shallow tree (`max_depth=4`, `min_samples_leaf=15`)
+  * `RandomForestClassifier` — Bagged tree ensemble (`n_estimators=200`, `max_depth=6`, `min_samples_leaf=10`)
+  * `HistGradientBoostingClassifier` — Native scikit-learn histogram gradient boosting (`max_iter=200`, `learning_rate=0.04`)
+  * `XGBClassifier` — Regularized gradient boosted trees (`n_estimators=200`, `max_depth=4`, `learning_rate=0.04`)
 * **License**: MIT
 
 ---
 
 ## 2. Intended Use & Scope
 * **Intended Use**:
-  * Portfolio demonstration of leak-free, reproducible tabular machine learning for road safety analysis in Greece.
-  * Regional severity regime monitoring (Track A) on official Hellenic Statistical Authority (ELSTAT SDT04) monthly statistics across Greece's 13 NUTS-2 regions.
-  * Methodological benchmarking and ablation auditing (Track B) for event-level collision severity pipelines.
+  * Portfolio demonstration of leak-free, reproducible tabular machine learning for road safety analysis in Greece using exclusively verified public statistics.
+  * Regional severity regime monitoring (`target_high_ksi = 1` when `ksi_severity_rate >= 0.21`) on official Hellenic Statistical Authority (**ELSTAT SDT04**) monthly statistics across Greece's 13 NUTS-2 regions.
 * **Out-of-Scope Uses**:
-  * **Not for real-time emergency dispatch or clinical triage**: Predictions are research estimates and must not replace human emergency dispatchers or medical protocols.
-  * **Not causal policy truth**: Feature importances measure predictive associations, not causal effects of infrastructure interventions.
+  * **Not for real-time emergency dispatch or clinical triage**: Predictions operate at the `Region × Month` level and must not be used for individual emergency dispatch.
+  * **Not causal policy truth**: Feature importances measure predictive associations across historical ELSTAT observations, not causal treatment effects.
 
 ---
 
 ## 3. Training & Evaluation Data
+* **Dataset**: `data/elstat_regional_monthly_panel_2021_2025.csv` ($N = 780$ regional-month observations across all 13 Greek NUTS-2 regions; Severe KSI Regime $\ge 21\%$ positive rate = `45.26%`).
 * **Chronological Split Protocol**:
-  * **Training Partition**: `2021–2023` (60% of timeline)
-  * **Validation Partition**: `2024` (20% of timeline — used for F1 threshold calibration)
-  * **Held-Out Test Partition**: `2025` (20% of timeline — strictly unseen during training and threshold tuning)
-* **Track A Dataset**: `data/elstat_regional_monthly_panel_2021_2025.csv` ($N = 780$ regional-month rows across 13 Greek NUTS-2 regions; 2025 test set $N = 156$).
-* **Track B Dataset**: `data/synthetic_benchmark_collisions.csv` ($N = 25,000$ synthetic event-level collisions calibrated to ELSTAT regional, seasonal, and road-type marginal distributions; 2025 test set $N = 5,065$, KSI positive rate = `13.38%`).
+  * **Training Partition**: `2021–2023` ($N = 468$ region-months, 60% of timeline)
+  * **Validation Partition**: `2024` ($N = 156$ region-months, 20% of timeline — used for F1 threshold calibration)
+  * **Held-Out Test Partition**: `2025` ($N = 156$ region-months, 20% of timeline — strictly unseen during training and threshold tuning)
 
 ---
 
-## 4. Quantitative Benchmark Results (2025 Held-Out Test Set)
+## 4. Quantitative Benchmark Results (2025 Held-Out ELSTAT Test Set, $N = 156$)
 
-### Track A: Official ELSTAT Regional Monthly Panel (`target_high_ksi`)
+### 5-Model Benchmark (`target_high_ksi`: Severe Regional KSI Regime $\ge 21\%$)
 | Model | ROC-AUC | 95% Bootstrap CI | PR-AUC | F1-Score | Precision | Recall | Brier Score |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| `DummyClassifier (Baseline)` | 0.5000 | `[0.5000, 0.5000]` | 0.7885 | 0.8817 | 0.7885 | 1.0000 | 0.1669 |
-| `DecisionTree` | 0.9068 | `[0.8321, 0.9684]` | 0.9566 | 0.9647 | 0.9318 | 1.0000 | 0.0681 |
-| `RandomForest` | **0.9512** | `[0.9036, 0.9846]` | **0.9855** | **0.9647** | **0.9318** | **1.0000** | **0.0561** |
-| `HistGradientBoosting` | 0.9377 | `[0.8835, 0.9756]` | 0.9808 | 0.9565 | 0.9308 | 0.9837 | 0.0574 |
-| `XGBoost` | 0.9377 | `[0.8811, 0.9775]` | 0.9808 | 0.9565 | 0.9308 | 0.9837 | 0.0609 |
+| `DummyClassifier (Baseline)` | 0.5000 | `[0.5000, 0.5000]` | 0.4679 | 0.0000 | 0.0000 | 0.0000 | 0.2496 |
+| `DecisionTree` | 0.7958 | `[0.7209, 0.8642]` | 0.7522 | 0.7579 | 0.6154 | 0.9863 | 0.1903 |
+| `RandomForest` | **0.8567** | `[0.7973, 0.9105]` | **0.8374** | 0.7594 | 0.6228 | 0.9726 | **0.1552** |
+| `HistGradientBoosting` | 0.8199 | `[0.7509, 0.8808]` | 0.8036 | 0.7543 | **0.6471** | 0.9041 | 0.1919 |
+| `XGBoost` | 0.8498 | `[0.7835, 0.9043]` | 0.8259 | **0.7609** | 0.6306 | 0.9589 | 0.1597 |
 
-### Track B: Event-Level Collision Benchmark & Honest Waze Ablation (`target_ksi`)
-| Model | ROC-AUC | 95% Bootstrap CI | PR-AUC | F1-Score | Precision | Recall | Brier Score |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| `DummyClassifier (Baseline)` | 0.5000 | `[0.5000, 0.5000]` | 0.1338 | 0.0000 | 0.0000 | 0.0000 | 0.1159 |
-| `DecisionTree` | 0.7021 | `[0.6803, 0.7228]` | 0.2572 | 0.3232 | 0.3111 | 0.3363 | 0.2116 |
-| `RandomForest` | **0.7245** | `[0.7039, 0.7472]` | **0.3023** | 0.3620 | 0.2746 | **0.5310** | 0.1941 |
-| `HistGradientBoosting` | 0.7213 | `[0.7015, 0.7452]` | 0.2967 | **0.3649** | **0.2962** | 0.4749 | 0.1981 |
-| `XGBoost` | 0.7171 | `[0.6969, 0.7386]` | 0.2885 | 0.3445 | 0.2839 | 0.4381 | 0.1726 |
-| `HistGradientBoosting (+Unverified Waze Proxy, y Immutable)` | 0.7141 | `[0.6928, 0.7361]` | 0.2889 | 0.3576 | 0.3035 | 0.4351 | 0.1980 |
+### Week 4 Empirical Feature Group Ablation Study (`HistGradientBoosting` on 2025 Test Set)
+| Feature Subset | Features (`#`) | ROC-AUC | 95% Bootstrap CI | PR-AUC | F1-Score | Recall |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `1. Calendar & Seasonality Only` | 4 | 0.5805 | `[0.4954, 0.6586]` | 0.5658 | 0.6376 | 1.0000 |
+| `2. Calendar + NUTS-2 Region` | 5 | **0.8404** | `[0.7717, 0.8971]` | **0.8298** | **0.7735** | 0.9589 |
+| `3. Calendar + Structural Exposure (Urban & Moto Share)` | 6 | 0.8320 | `[0.7538, 0.8907]` | 0.8141 | 0.7660 | 0.9863 |
+| `4. Full Baseline (+ Autoregressive Lags t-1, t-2, t-3, t-12)` | 14 | 0.8199 | `[0.7509, 0.8808]` | 0.8036 | 0.7543 | 0.9041 |
 
 ---
 
-## 5. Key Scientific & Audit Findings
-1. **Substantial Lift Over Naive Baseline**: On Track B, `RandomForest` (`PR-AUC = 0.3023`) and `HistGradientBoosting` (`PR-AUC = 0.2967`, `F1 = 0.3649`) more than double the precision-recall performance of the naive baseline (`PR-AUC = 0.1338`).
-2. **Honest Waze Ablation Verification**: When `assert_target_immutable(y_before, y_after)` is enforced so that feature engineering cannot overwrite `target_ksi`, adding heuristic simulated Waze features (`waze_flow_speed_kmh`, `waze_jam_level`) slightly reduces test ROC-AUC (`0.7213 -> 0.7141`) due to injected feature noise. This confirms that genuine predictive lift from crowdsourced telemetry requires real historical pre-collision partner feeds.
-3. **Dominant Physical Risk Factors**: Permutation importance on the 2025 test set shows that rural vs. urban road environment (`is_rural`, `rural_x_speed`), motorcycle involvement (`has_motorcycle`, `moto_x_speed`), pedestrian involvement (`has_pedestrian`), and unlit nighttime road conditions (`is_dark_unlit`) drive the majority of discriminating signal.
+## 5. Key Scientific & Explainability Findings
+1. **Substantial Lift Over Naive Baseline**: On the held-out 2025 ELSTAT test set, `RandomForest` (`ROC-AUC = 0.8567`, `PR-AUC = 0.8374`, `Brier = 0.1552`) and `XGBoost` (`ROC-AUC = 0.8498`, `PR-AUC = 0.8259`, `F1 = 0.7609`) substantially outperform the naive prior baseline (`ROC-AUC = 0.5000`, `PR-AUC = 0.4679`, `F1 = 0.0000`).
+2. **Dominant Empirical Predictors**: Permutation importance on the 2025 test set shows that same-month prior-year severity (`lag_12m_ksi_rate`, `+0.0440` PR-AUC drop), structural road network urbanization (`urban_ratio`, `+0.0254`), lagged regional collision volume (`lag_12m_total_accidents`, `+0.0186`; `lag_1m_total_accidents`, `+0.0174`), and two-wheeler share (`motorcycle_share`, `+0.0162`) drive the model's out-of-sample discrimination.

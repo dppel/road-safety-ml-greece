@@ -1,20 +1,22 @@
 """
-Reproducible Training, Benchmarking & Ablation Pipeline (`train.py`)
-====================================================================
-Single-command reproducible pipeline (`python -m road_safety.train`) that:
+Reproducible Training, Benchmarking & Feature Ablation Pipeline (`train.py`)
+============================================================================
+Single-command reproducible pipeline (`python run.py` or `python -m road_safety.train`)
+operating exclusively on verified Hellenic Statistical Authority (ELSTAT SDT04) open data:
   1. Validates data schemas, chronological splits (2021-2023 Train, 2024 Val, 2025 Test),
      and anti-leakage rules (`validate_no_leakage`, `assert_target_immutable`).
   2. Benchmarks DummyClassifier, DecisionTree, RandomForest, HistGradientBoosting,
-     and XGBoost on Track A (Official ELSTAT Regional Panel) and Track B (Event-Level
-     Synthetic Collision Benchmark).
-  3. Runs the Week 4 Honest Waze Ablation Study (verifying that `y` is never altered).
-  4. Computes Week 5 permutation feature importances, subgroup audits, and error analysis.
-  5. Exports structured tables (`reports/benchmark_comparison.csv`, `reports/benchmark_metrics.json`)
-     and publication-quality figures (`reports/figures/*.png`).
+     and XGBoost on the Official ELSTAT Regional Monthly Panel (780 observations,
+     13 Greek NUTS-2 regions, 2021-2025).
+  3. Executes the Week 4 Empirical Feature Group Ablation Study (comparing Calendar-only,
+     Regional, Structural Exposure, and Autoregressive Lag feature groups on the 2025 test set).
+  4. Computes Week 5 permutation feature importances, subgroup audits across all 13 Greek
+     regions, and error analysis cases (TP, FP, FN).
+  5. Exports structured tables (`reports/benchmark_comparison.csv`, `reports/ablation_study.csv`,
+     `reports/benchmark_metrics.json`) and publication-quality figures (`reports/figures/*.png`).
 """
 
 import json
-import os
 import platform
 import sys
 from pathlib import Path
@@ -36,7 +38,6 @@ from road_safety.data_validation import (
     assert_target_immutable,
     temporal_train_val_test_split,
     validate_binary_target,
-    validate_no_leakage,
 )
 from road_safety.evaluate import evaluate_predictions, find_optimal_f1_threshold
 from road_safety.explain import (
@@ -45,19 +46,13 @@ from road_safety.explain import (
     extract_error_analysis_cases,
 )
 from road_safety.features import (
-    MICRO_BASE_NUMERIC_FEATURES,
-    MICRO_CATEGORICAL_FEATURES,
+    ABLATION_FEATURE_GROUPS,
     REGIONAL_CATEGORICAL_FEATURES,
     REGIONAL_NUMERIC_FEATURES,
-    CollisionFeatureEngineer,
     build_regional_panel_features,
     extract_regional_X_y,
 )
-from road_safety.preprocessing import SentinelCleaner, build_preprocessing_transformer
-from road_safety.waze_ablation import (
-    WAZE_TELEMETRY_COLUMNS,
-    generate_proxy_waze_features_strictly_on_X,
-)
+from road_safety.preprocessing import build_preprocessing_transformer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
@@ -65,28 +60,28 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
 
-def get_candidate_models(seed: int = 42, pos_weight: float = 4.0) -> Dict[str, Any]:
+def get_candidate_models(seed: int = 42, pos_weight: float = 1.0) -> Dict[str, Any]:
     """
     Returns the standard benchmark suite of classifiers initialized with fixed random seeds.
     """
     models: Dict[str, Any] = {
         "DummyClassifier (Baseline)": DummyClassifier(strategy="prior", random_state=seed),
         "DecisionTree": DecisionTreeClassifier(
-            max_depth=5, min_samples_leaf=20, class_weight="balanced", random_state=seed
+            max_depth=4, min_samples_leaf=15, class_weight="balanced", random_state=seed
         ),
         "RandomForest": RandomForestClassifier(
             n_estimators=200,
-            max_depth=8,
-            min_samples_leaf=15,
+            max_depth=6,
+            min_samples_leaf=10,
             class_weight="balanced",
             random_state=seed,
             n_jobs=1,
         ),
         "HistGradientBoosting": HistGradientBoostingClassifier(
-            max_iter=250,
+            max_iter=200,
             learning_rate=0.04,
-            max_leaf_nodes=31,
-            min_samples_leaf=20,
+            max_leaf_nodes=15,
+            min_samples_leaf=15,
             class_weight="balanced",
             random_state=seed,
         ),
@@ -95,9 +90,9 @@ def get_candidate_models(seed: int = 42, pos_weight: float = 4.0) -> Dict[str, A
         from xgboost import XGBClassifier  # type: ignore
 
         models["XGBoost"] = XGBClassifier(
-            n_estimators=250,
+            n_estimators=200,
             learning_rate=0.04,
-            max_depth=5,
+            max_depth=4,
             subsample=0.8,
             colsample_bytree=0.8,
             scale_pos_weight=pos_weight,
@@ -110,161 +105,34 @@ def get_candidate_models(seed: int = 42, pos_weight: float = 4.0) -> Dict[str, A
     return models
 
 
-def ensure_datasets_exist(seed: int = 42) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_official_elstat_datasets() -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Loads `elstat_regional_monthly_panel_2021_2025.csv` and `synthetic_benchmark_collisions.csv`.
-    If `synthetic_benchmark_collisions.csv` does not yet exist, generates it deterministically
-    from ELSTAT marginal distributions with a strictly fixed target `target_ksi` that is never
-    modified by Waze or downstream scripts.
+    Loads the verified ELSTAT national annual dataset (2015-2024) and the official
+    regional monthly panel (2021-2025, 13 Greek NUTS-2 regions).
+    Zero synthetic data files are used.
     """
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    regional_path = DATA_DIR / "elstat_regional_monthly_panel_2021_2025.csv"
-    micro_path = DATA_DIR / "synthetic_benchmark_collisions.csv"
+    nat_path = DATA_DIR / "elstat_national_annual_2015_2024.csv"
+    reg_path = DATA_DIR / "elstat_regional_monthly_panel_2021_2025.csv"
 
-    if not regional_path.exists():
-        raise FileNotFoundError(f"Missing official regional panel dataset at {regional_path}")
+    if not nat_path.exists():
+        raise FileNotFoundError(f"Missing official ELSTAT national dataset at {nat_path}")
+    if not reg_path.exists():
+        raise FileNotFoundError(f"Missing official ELSTAT regional panel dataset at {reg_path}")
 
-    regional_df = pd.read_csv(regional_path)
-    # Keep 2021-2025 clean 60-month window (780 rows = 13 regions x 60 months)
-    regional_df = regional_df[regional_df["year"].between(2021, 2025)].copy()
-
-    if not micro_path.exists():
-        rng = np.random.RandomState(seed)
-        n_rows = 25000
-        regions = [
-            "Attica (Αττική)",
-            "Central Macedonia (Κεντρική Μακεδονία)",
-            "Western Greece (Δυτική Ελλάδα)",
-            "Peloponnese (Πελοπόννησος)",
-            "Crete (Κρήτη)",
-            "Thessaly (Θεσσαλία)",
-            "South Aegean (Νότιο Αιγαίο)",
-            "Central Greece (Στερεά Ελλάδα)",
-            "Eastern Macedonia & Thrace (ΑΜΘ)",
-            "Ionian Islands (Ιόνια Νησιά)",
-            "Epirus (Ήπειρος)",
-            "North Aegean (Βόρειο Αιγαίο)",
-            "Western Macedonia (Δυτική Μακεδονία)",
-        ]
-        reg_probs = [0.535, 0.165, 0.052, 0.047, 0.047, 0.035, 0.036, 0.030, 0.021, 0.012, 0.009, 0.006, 0.005]
-        years = rng.choice([2021, 2022, 2023, 2024, 2025], size=n_rows, p=[0.195, 0.198, 0.200, 0.205, 0.202])
-        months = rng.choice(
-            np.arange(1, 13),
-            size=n_rows,
-            p=[0.068, 0.065, 0.076, 0.080, 0.088, 0.096, 0.105, 0.101, 0.092, 0.083, 0.076, 0.070],
-        )
-        days = rng.randint(1, 8, size=n_rows)
-        hours = rng.choice(
-            np.arange(24),
-            size=n_rows,
-            p=[
-                0.025, 0.020, 0.018, 0.015, 0.015, 0.020,
-                0.035, 0.055, 0.065, 0.055, 0.050, 0.055,
-                0.060, 0.065, 0.070, 0.060, 0.055, 0.055,
-                0.050, 0.045, 0.038, 0.032, 0.022, 0.020,
-            ],
-        )
-        reg_col = rng.choice(regions, size=n_rows, p=reg_probs)
-        is_attica_or_cm = np.isin(
-            reg_col, ["Attica (Αττική)", "Central Macedonia (Κεντρική Μακεδονία)"]
-        )
-        area_type = np.where(
-            is_attica_or_cm,
-            rng.choice([1, 2], size=n_rows, p=[0.84, 0.16]),
-            rng.choice([1, 2], size=n_rows, p=[0.42, 0.58]),
-        )
-        road_type = np.where(
-            area_type == 1,
-            rng.choice([3, 6], size=n_rows, p=[0.20, 0.80]),
-            rng.choice([1, 2, 3], size=n_rows, p=[0.45, 0.15, 0.40]),
-        )
-        speed_limit = np.where(
-            area_type == 1,
-            rng.choice([30, 50, 70, -1], size=n_rows, p=[0.15, 0.68, 0.14, 0.03]),
-            rng.choice([50, 70, 90, 110, 130, -1], size=n_rows, p=[0.10, 0.25, 0.42, 0.13, 0.07, 0.03]),
-        )
-        is_junction = np.where(
-            area_type == 1,
-            rng.binomial(1, 0.58, size=n_rows),
-            rng.binomial(1, 0.22, size=n_rows),
-        )
-        is_night = np.isin(hours, [21, 22, 23, 0, 1, 2, 3, 4, 5])
-        light_conditions = np.where(
-            ~is_night,
-            1,
-            np.where(
-                area_type == 1,
-                rng.choice([4, 6, -1], size=n_rows, p=[0.82, 0.16, 0.02]),
-                rng.choice([4, 6, -1], size=n_rows, p=[0.35, 0.62, 0.03]),
-            ),
-        )
-        weather_conditions = rng.choice([1, 2, 3, 4, -1], size=n_rows, p=[0.84, 0.10, 0.02, 0.02, 0.02])
-        road_surface = np.where(weather_conditions == 2, 2, rng.choice([1, 2, 3, -1], size=n_rows, p=[0.85, 0.10, 0.03, 0.02]))
-        num_vehicles = rng.choice([1, 2, 3, 4], size=n_rows, p=[0.32, 0.54, 0.11, 0.03])
-        has_motorcycle = rng.binomial(1, np.where(area_type == 1, 0.48, 0.34))
-        has_pedestrian = rng.binomial(1, np.where(area_type == 1, 0.18, 0.07))
-        has_heavy = rng.binomial(1, np.where(area_type == 2, 0.14, 0.06))
-        min_driver_age = np.clip(rng.normal(38, 15, size=n_rows).astype(int), 17, 86)
-        max_vehicle_age = np.clip(rng.gamma(shape=3.2, scale=4.2, size=n_rows).astype(int), 0, 28)
-
-        # Ground-truth KSI data-generating process (strictly from baseline physical variables)
-        clean_spd = np.where(speed_limit < 0, 50, speed_limit)
-        logit = (
-            -3.05
-            + 0.88 * (area_type == 2)
-            + 0.82 * has_motorcycle
-            + 0.68 * has_pedestrian
-            + 0.016 * (clean_spd - 50.0)
-            + 0.58 * (light_conditions == 6)
-            + 0.38 * has_heavy
-            + 0.30 * (min_driver_age <= 23)
-            + 0.28 * (min_driver_age >= 68)
-            - 0.32 * is_junction
-            + 0.25 * (num_vehicles == 1)
-        )
-        prob_ksi = 1.0 / (1.0 + np.exp(-logit))
-        target_ksi = rng.binomial(1, prob_ksi)
-
-        micro_df = pd.DataFrame(
-            {
-                "collision_id": [f"SYN-GR-{y}-{i:05d}" for i, y in enumerate(years)],
-                "data_source_label": "SYNTHETIC_BENCHMARK_CALIBRATED_TO_ELSTAT",
-                "collision_year": years,
-                "region": reg_col,
-                "month": months,
-                "day_of_week": days,
-                "hour": hours,
-                "area_type": area_type,
-                "road_type": road_type,
-                "speed_limit": speed_limit,
-                "is_junction": is_junction,
-                "light_conditions": light_conditions,
-                "weather_conditions": weather_conditions,
-                "road_surface_conditions": road_surface,
-                "number_of_vehicles": num_vehicles,
-                "has_motorcycle": has_motorcycle,
-                "has_pedestrian": has_pedestrian,
-                "has_heavy_vehicle": has_heavy,
-                "min_driver_age": min_driver_age,
-                "max_vehicle_age": max_vehicle_age,
-                "target_ksi": target_ksi,
-            }
-        )
-        micro_df.to_csv(micro_path, index=False)
-    else:
-        micro_df = pd.read_csv(micro_path)
-
-    return regional_df, micro_df
+    nat_df = pd.read_csv(nat_path)
+    reg_df = pd.read_csv(reg_path)
+    reg_df = reg_df[reg_df["year"].between(2021, 2025)].copy()
+    return nat_df, reg_df
 
 
-def run_track_a_regional_benchmark(
-    regional_df: pd.DataFrame,
+def run_elstat_model_benchmark(
+    fe_df: pd.DataFrame,
     seed: int = 42,
-) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+) -> Tuple[pd.DataFrame, Dict[str, Any], pd.DataFrame, pd.Series]:
     """
-    Executes Track A (Official ELSTAT Regional Monthly Panel) benchmark across all candidate models.
+    Benchmarks all candidate models on the official ELSTAT regional panel using a
+    strict chronological split: 2021-2023 Train, 2024 Validation, 2025 Test.
     """
-    fe_df = build_regional_panel_features(regional_df, high_ksi_threshold=0.16)
     train_df, val_df, test_df = temporal_train_val_test_split(
         fe_df, year_col="year", train_end_year=2023, val_year=2024, test_year=2025
     )
@@ -273,9 +141,12 @@ def run_track_a_regional_benchmark(
     X_val, y_val = extract_regional_X_y(val_df)
     X_test, y_test = extract_regional_X_y(test_df)
 
-    validate_binary_target(y_train, "Track A y_train")
-    validate_binary_target(y_val, "Track A y_val")
-    validate_binary_target(y_test, "Track A y_test")
+    y_train_snapshot = y_train.to_numpy().copy()
+    y_test_snapshot = y_test.to_numpy().copy()
+
+    validate_binary_target(y_train, "ELSTAT y_train")
+    validate_binary_target(y_val, "ELSTAT y_val")
+    validate_binary_target(y_test, "ELSTAT y_test")
 
     pos_weight = float((y_train == 0).sum() / max(1, (y_train == 1).sum()))
     models = get_candidate_models(seed=seed, pos_weight=pos_weight)
@@ -290,23 +161,21 @@ def run_track_a_regional_benchmark(
         pipe = Pipeline([("prep", prep), ("clf", clf)])
         pipe.fit(X_train, y_train)
 
+        assert_target_immutable(y_train_snapshot, y_train)
+        assert_target_immutable(y_test_snapshot, y_test)
+
         val_probs = pipe.predict_proba(X_val)[:, 1]
         test_probs = pipe.predict_proba(X_test)[:, 1]
 
-        opt_thresh = (
-            0.50
-            if "Dummy" in name
-            else find_optimal_f1_threshold(y_val, val_probs)
-        )
+        opt_thresh = 0.50 if "Dummy" in name else find_optimal_f1_threshold(y_val, val_probs)
         metrics = evaluate_predictions(
             model_name=name,
             y_test=y_test,
             test_probs=test_probs,
             threshold=opt_thresh,
-            n_bootstraps=300,
+            n_bootstraps=400,
             seed=seed,
         )
-        metrics["track"] = "Track A: Official ELSTAT Regional Panel"
         results.append(metrics)
         curves[name] = {
             "y_test": y_test.to_numpy(),
@@ -315,174 +184,71 @@ def run_track_a_regional_benchmark(
             "threshold": opt_thresh,
         }
 
-    return pd.DataFrame(results), curves
+    return pd.DataFrame(results), curves, X_test, y_test
 
 
-def run_track_b_micro_and_ablation(
-    micro_df: pd.DataFrame,
+def run_empirical_feature_ablation(
+    fe_df: pd.DataFrame,
     seed: int = 42,
-) -> Tuple[pd.DataFrame, Dict[str, Any], pd.DataFrame, pd.DataFrame, Dict[str, pd.DataFrame]]:
+) -> pd.DataFrame:
     """
-    Executes Track B (Event-Level Synthetic Collision Benchmark) + Week 4 Honest Waze Ablation Study
-    + Week 5 Explainability & Subgroup Audit.
+    Week 4 Deliverable: Empirical Feature Group Ablation Study on Official ELSTAT Data.
+    Evaluates the exact out-of-time contribution of each real feature group on the 2025 test set
+    while guaranteeing 100% target immutability (`assert_target_immutable`).
     """
     train_df, val_df, test_df = temporal_train_val_test_split(
-        micro_df, year_col="collision_year", train_end_year=2023, val_year=2024, test_year=2025
+        fe_df, year_col="year", train_end_year=2023, val_year=2024, test_year=2025
     )
 
-    raw_feature_cols = [
-        "region",
-        "month",
-        "day_of_week",
-        "hour",
-        "area_type",
-        "road_type",
-        "speed_limit",
-        "is_junction",
-        "light_conditions",
-        "weather_conditions",
-        "road_surface_conditions",
-        "number_of_vehicles",
-        "has_motorcycle",
-        "has_pedestrian",
-        "has_heavy_vehicle",
-        "min_driver_age",
-        "max_vehicle_age",
-    ]
+    ablation_rows: List[Dict[str, Any]] = []
+    for group_label, (num_cols, cat_cols) in ABLATION_FEATURE_GROUPS.items():
+        X_tr, y_tr = extract_regional_X_y(train_df, numeric_cols=num_cols, categorical_cols=cat_cols)
+        X_va, y_va = extract_regional_X_y(val_df, numeric_cols=num_cols, categorical_cols=cat_cols)
+        X_te, y_te = extract_regional_X_y(test_df, numeric_cols=num_cols, categorical_cols=cat_cols)
 
-    X_train_raw = train_df[raw_feature_cols].copy()
-    y_train = train_df["target_ksi"].astype(int).copy()
-    X_val_raw = val_df[raw_feature_cols].copy()
-    y_val = val_df["target_ksi"].astype(int).copy()
-    X_test_raw = test_df[raw_feature_cols].copy()
-    y_test = test_df["target_ksi"].astype(int).copy()
+        y_te_orig = y_te.to_numpy().copy()
 
-    # Save copies of y to verify 100% Target Immutability across all transformations
-    y_train_orig = y_train.to_numpy().copy()
-    y_test_orig = y_test.to_numpy().copy()
-
-    fe = CollisionFeatureEngineer()
-    X_train_fe = fe.fit_transform(X_train_raw)
-    X_val_fe = fe.transform(X_val_raw)
-    X_test_fe = fe.transform(X_test_raw)
-
-    assert_target_immutable(y_train_orig, y_train)
-    assert_target_immutable(y_test_orig, y_test)
-
-    pos_weight = float((y_train == 0).sum() / max(1, (y_train == 1).sum()))
-    models = get_candidate_models(seed=seed, pos_weight=pos_weight)
-
-    results: List[Dict[str, Any]] = []
-    curves: Dict[str, Dict[str, Any]] = {}
-
-    for name, clf in models.items():
-        prep = build_preprocessing_transformer(
-            MICRO_BASE_NUMERIC_FEATURES, MICRO_CATEGORICAL_FEATURES
+        prep = build_preprocessing_transformer(num_cols, cat_cols)
+        clf = HistGradientBoostingClassifier(
+            max_iter=200,
+            learning_rate=0.04,
+            max_leaf_nodes=15,
+            min_samples_leaf=15,
+            class_weight="balanced",
+            random_state=seed,
         )
-        pipe = Pipeline(
-            [
-                ("sentinel", SentinelCleaner()),
-                ("prep", prep),
-                ("clf", clf),
-            ]
-        )
-        pipe.fit(X_train_fe, y_train)
+        pipe = Pipeline([("prep", prep), ("clf", clf)])
+        pipe.fit(X_tr, y_tr)
 
-        val_probs = pipe.predict_proba(X_val_fe)[:, 1]
-        test_probs = pipe.predict_proba(X_test_fe)[:, 1]
+        assert_target_immutable(y_te_orig, y_te)
 
-        opt_thresh = (
-            0.50
-            if "Dummy" in name
-            else find_optimal_f1_threshold(y_val, val_probs)
-        )
-        metrics = evaluate_predictions(
-            model_name=name,
-            y_test=y_test,
+        val_probs = pipe.predict_proba(X_va)[:, 1]
+        test_probs = pipe.predict_proba(X_te)[:, 1]
+        thresh = find_optimal_f1_threshold(y_va, val_probs)
+
+        m = evaluate_predictions(
+            model_name=group_label,
+            y_test=y_te,
             test_probs=test_probs,
-            threshold=opt_thresh,
-            n_bootstraps=300,
+            threshold=thresh,
+            n_bootstraps=400,
             seed=seed,
         )
-        metrics["track"] = "Track B: Event-Level Collision Benchmark"
-        results.append(metrics)
-        curves[name] = {
-            "y_test": y_test.to_numpy(),
-            "probs": test_probs,
-            "pipeline": pipe,
-            "threshold": opt_thresh,
-        }
+        m["num_features"] = len(num_cols) + len(cat_cols)
+        ablation_rows.append(m)
 
-    # Week 4 Deliverable: Honest Waze Proxy Ablation Study (Target y is strictly untouched!)
-    X_train_waze = generate_proxy_waze_features_strictly_on_X(X_train_fe, seed=seed)
-    X_val_waze = generate_proxy_waze_features_strictly_on_X(X_val_fe, seed=seed + 1)
-    X_test_waze = generate_proxy_waze_features_strictly_on_X(X_test_fe, seed=seed + 2)
-
-    assert_target_immutable(y_train_orig, y_train)
-    assert_target_immutable(y_test_orig, y_test)
-
-    waze_num_cols = MICRO_BASE_NUMERIC_FEATURES + WAZE_TELEMETRY_COLUMNS
-    waze_prep = build_preprocessing_transformer(waze_num_cols, MICRO_CATEGORICAL_FEATURES)
-    waze_pipe = Pipeline(
-        [
-            ("sentinel", SentinelCleaner()),
-            ("prep", waze_prep),
-            (
-                "clf",
-                HistGradientBoostingClassifier(
-                    max_iter=250,
-                    learning_rate=0.04,
-                    max_leaf_nodes=31,
-                    min_samples_leaf=20,
-                    class_weight="balanced",
-                    random_state=seed,
-                ),
-            ),
-        ]
-    )
-    waze_pipe.fit(X_train_waze, y_train)
-    waze_val_probs = waze_pipe.predict_proba(X_val_waze)[:, 1]
-    waze_test_probs = waze_pipe.predict_proba(X_test_waze)[:, 1]
-    waze_thresh = find_optimal_f1_threshold(y_val, waze_val_probs)
-
-    waze_metrics = evaluate_predictions(
-        model_name="HistGradientBoosting (+Unverified Waze Proxy, y Immutable)",
-        y_test=y_test,
-        test_probs=waze_test_probs,
-        threshold=waze_thresh,
-        n_bootstraps=300,
-        seed=seed,
-    )
-    waze_metrics["track"] = "Track B: Week 4 Waze Ablation Study"
-    results.append(waze_metrics)
-
-    # Week 5 Deliverable: Explainability & Subgroup Audit on Best Honest Baseline Model
-    best_pipe = curves["HistGradientBoosting"]["pipeline"]
-    best_probs = curves["HistGradientBoosting"]["probs"]
-    best_thresh = curves["HistGradientBoosting"]["threshold"]
-
-    imp_df = compute_global_feature_importance(
-        best_pipe, X_test_fe, y_test, scoring="average_precision", n_repeats=8, seed=seed
-    )
-    subgroup_df = evaluate_subgroup_performance(
-        X_test_fe, y_test, best_probs, group_col="region", threshold=best_thresh
-    )
-    error_cases = extract_error_analysis_cases(
-        X_test_fe, y_test, best_probs, threshold=best_thresh, top_k=5
-    )
-
-    return pd.DataFrame(results), curves, imp_df, subgroup_df, error_cases
+    return pd.DataFrame(ablation_rows)
 
 
 def generate_report_figures(
     regional_df: pd.DataFrame,
-    track_a_curves: Dict[str, Any],
-    track_b_curves: Dict[str, Any],
+    curves: Dict[str, Any],
+    ablation_df: pd.DataFrame,
     imp_df: pd.DataFrame,
     subgroup_df: pd.DataFrame,
 ) -> None:
     """
-    Generates 4 publication-grade diagnostic figures in `reports/figures/`.
+    Generates 4 publication-grade diagnostic figures in `reports/figures/` strictly from ELSTAT data.
     """
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     plt.style.use("seaborn-v0_8-whitegrid")
@@ -504,9 +270,9 @@ def generate_report_figures(
     axes[0].set_title("Total Injury Collisions (ELSTAT 2021-2025)", fontsize=12, fontweight="bold")
     axes[0].set_xlabel("Total Injury Collisions")
 
-    colors = ["#dc2626" if r >= 0.16 else "#2563eb" for r in reg_summary["ksi_rate"]]
+    colors = ["#dc2626" if r >= 0.21 else "#2563eb" for r in reg_summary["ksi_rate"]]
     axes[1].barh(reg_summary["short_region"], reg_summary["ksi_rate"] * 100.0, color=colors)
-    axes[1].axvline(16.0, color="#991b1b", linestyle="--", linewidth=1.5, label="High-KSI Regime Threshold (16%)")
+    axes[1].axvline(21.0, color="#991b1b", linestyle="--", linewidth=1.5, label="Severe KSI Regime Threshold (21%)")
     axes[1].set_title("Mean KSI Severity Rate (% Killed/Seriously Injured)", fontsize=12, fontweight="bold")
     axes[1].set_xlabel("KSI Severity Rate (%)")
     axes[1].legend(loc="lower right")
@@ -515,7 +281,7 @@ def generate_report_figures(
     plt.savefig(FIGURES_DIR / "elstat_regional_paradox_greece.png", dpi=220)
     plt.close(fig)
 
-    # 2. Benchmark ROC & PR Curves (Track B Event-Level Benchmark)
+    # 2. Benchmark ROC & PR Curves on Held-Out 2025 ELSTAT Test Set
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     palette = {
         "DummyClassifier (Baseline)": "#64748b",
@@ -524,7 +290,7 @@ def generate_report_figures(
         "HistGradientBoosting": "#1d4ed8",
         "XGBoost": "#7c3aed",
     }
-    for name, cdata in track_b_curves.items():
+    for name, cdata in curves.items():
         y_t = cdata["y_test"]
         prb = cdata["probs"]
         col = palette.get(name, "#334155")
@@ -534,23 +300,23 @@ def generate_report_figures(
         axes[1].plot(rec, prec, lw=2.2, label=name, color=col)
 
     axes[0].plot([0, 1], [0, 1], "k--", alpha=0.4)
-    axes[0].set_title("ROC Curves on Held-Out 2025 Test Partition", fontsize=12, fontweight="bold")
+    axes[0].set_title("ROC Curves on Held-Out 2025 ELSTAT Test Set", fontsize=12, fontweight="bold")
     axes[0].set_xlabel("False Positive Rate (1 - Specificity)")
     axes[0].set_ylabel("True Positive Rate (Recall)")
     axes[0].legend(loc="lower right")
 
-    axes[1].set_title("Precision-Recall Curves on Held-Out 2025 Test Partition", fontsize=12, fontweight="bold")
+    axes[1].set_title("Precision-Recall Curves on Held-Out 2025 ELSTAT Test Set", fontsize=12, fontweight="bold")
     axes[1].set_xlabel("Recall (Sensitivity)")
     axes[1].set_ylabel("Precision (Positive Predictive Value)")
-    axes[1].legend(loc="upper right")
+    axes[1].legend(loc="lower left")
     plt.tight_layout()
     plt.savefig(FIGURES_DIR / "benchmark_roc_pr_curves.png", dpi=220)
     plt.close(fig)
 
-    # 3. Top Permutation Feature Importances
-    top_imp = imp_df.head(12).iloc[::-1]
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.barh(
+    # 3. Permutation Importance & Empirical Feature Ablation
+    top_imp = imp_df.head(10).iloc[::-1]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+    axes[0].barh(
         top_imp["feature"],
         top_imp["importance_mean"],
         xerr=top_imp["importance_std"],
@@ -558,23 +324,31 @@ def generate_report_figures(
         ecolor="#334155",
         capsize=3,
     )
-    ax.set_title("Global Permutation Feature Importance (PR-AUC Drop on 2025 Test Set)", fontsize=12, fontweight="bold")
-    ax.set_xlabel("Mean Decrease in Average Precision (PR-AUC)")
+    axes[0].set_title("Permutation Importance (PR-AUC Drop on 2025 Test Set)", fontsize=11, fontweight="bold")
+    axes[0].set_xlabel("Mean Decrease in Average Precision (PR-AUC)")
+
+    abl_rev = ablation_df.iloc[::-1]
+    axes[1].barh(abl_rev["model"], abl_rev["roc_auc"], color="#1d4ed8", alpha=0.85, label="ROC-AUC")
+    axes[1].axvline(0.5, color="#dc2626", linestyle="--", lw=1.2, label="Random Baseline (0.50)")
+    axes[1].set_xlim(0.4, 1.02)
+    axes[1].set_title("Empirical Feature Group Ablation (2025 Test ROC-AUC)", fontsize=11, fontweight="bold")
+    axes[1].set_xlabel("Test Set ROC-AUC")
+    axes[1].legend(loc="lower right")
     plt.tight_layout()
     plt.savefig(FIGURES_DIR / "feature_importance_and_ablation.png", dpi=220)
     plt.close(fig)
 
-    # 4. Regional Subgroup Calibration Plot
+    # 4. Regional Subgroup Calibration Plot (All 13 Greek NUTS-2 Regions)
     sub_sorted = subgroup_df.sort_values("actual_ksi_rate", ascending=True).copy()
     sub_sorted["short_region"] = sub_sorted["region"].apply(lambda s: s.split(" (")[0])
     y_pos = np.arange(len(sub_sorted))
     fig, ax = plt.subplots(figsize=(11, 6))
-    ax.barh(y_pos - 0.18, sub_sorted["actual_ksi_rate"] * 100.0, height=0.35, label="Actual Test KSI Rate (%)", color="#1e293b")
+    ax.barh(y_pos - 0.18, sub_sorted["actual_ksi_rate"] * 100.0, height=0.35, label="Actual 2025 High-KSI Regime Rate (%)", color="#1e293b")
     ax.barh(y_pos + 0.18, sub_sorted["mean_predicted_prob"] * 100.0, height=0.35, label="Model Predicted Probability (%)", color="#3b82f6")
     ax.set_yticks(y_pos)
     ax.set_yticklabels(sub_sorted["short_region"])
-    ax.set_xlabel("KSI Rate / Probability (%)")
-    ax.set_title("Subgroup Audit: Actual vs. Predicted KSI Rate by Greek Region (2025 Test Set)", fontsize=12, fontweight="bold")
+    ax.set_xlabel("High-KSI Regime Rate / Predicted Probability (%)")
+    ax.set_title("Subgroup Audit across All 13 Greek Regions (2025 Held-Out Test Set)", fontsize=12, fontweight="bold")
     ax.legend(loc="lower right")
     plt.tight_layout()
     plt.savefig(FIGURES_DIR / "regional_subgroup_calibration.png", dpi=220)
@@ -588,31 +362,62 @@ def main() -> None:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 78)
-    print("ROAD SAFETY ML GREECE — REPRODUCIBLE BENCHMARK & ABLATION PIPELINE (v1.0.0)")
-    print("=" * 78)
+    print("=" * 80)
+    print("ROAD SAFETY ML GREECE — OFFICIAL ELSTAT EMPIRICAL PIPELINE (v1.1.0, ZERO SYNTHETIC)")
+    print("=" * 80)
 
-    regional_df, micro_df = ensure_datasets_exist(seed=42)
-    print(f"[Data] Official ELSTAT Regional Panel : {len(regional_df):,} rows (2021-2025, 13 NUTS-2 regions)")
-    print(f"[Data] Synthetic Collision Benchmark  : {len(micro_df):,} rows (KSI Rate: {micro_df['target_ksi'].mean():.2%})")
+    nat_df, reg_df = load_official_elstat_datasets()
+    fe_df = build_regional_panel_features(reg_df, high_ksi_threshold=0.21)
 
-    print("\n[1/4] Running Track A: Official ELSTAT Regional Panel Benchmark...")
-    track_a_df, track_a_curves = run_track_a_regional_benchmark(regional_df, seed=42)
-    print(track_a_df[["model", "roc_auc", "roc_auc_ci_95", "pr_auc", "f1", "precision", "recall"]].to_string(index=False))
+    print(f"[Data] Official ELSTAT National Series : {len(nat_df)} years (2015-2024)")
+    print(f"[Data] Official ELSTAT Regional Panel  : {len(fe_df):,} rows (2021-2025, 13 NUTS-2 regions)")
+    print(f"[Data] Severe KSI Regime Rate (>=21%)  : {fe_df['target_high_ksi'].mean():.2%}")
 
-    print("\n[2/4] Running Track B: Event-Level Benchmark & Honest Waze Ablation Study...")
-    track_b_df, track_b_curves, imp_df, subgroup_df, error_cases = run_track_b_micro_and_ablation(micro_df, seed=42)
-    print(track_b_df[["model", "roc_auc", "roc_auc_ci_95", "pr_auc", "f1", "precision", "recall"]].to_string(index=False))
+    print("\n[1/4] Running 5-Model Benchmark on Held-Out 2025 ELSTAT Test Set...")
+    bench_df, curves, X_test, y_test = run_elstat_model_benchmark(fe_df, seed=42)
+    print(
+        bench_df[
+            ["model", "roc_auc", "roc_auc_ci_95", "pr_auc", "f1", "precision", "recall", "brier_score"]
+        ].to_string(index=False)
+    )
 
-    print("\n[3/4] Generating Publication Figures in reports/figures/...")
-    generate_report_figures(regional_df, track_a_curves, track_b_curves, imp_df, subgroup_df)
+    print("\n[2/4] Running Week 4 Empirical Feature Group Ablation Study...")
+    ablation_df = run_empirical_feature_ablation(fe_df, seed=42)
+    print(
+        ablation_df[
+            ["model", "num_features", "roc_auc", "roc_auc_ci_95", "pr_auc", "f1", "recall"]
+        ].to_string(index=False)
+    )
 
-    all_benchmarks = pd.concat([track_a_df, track_b_df], ignore_index=True)
-    all_benchmarks.to_csv(REPORTS_DIR / "benchmark_comparison.csv", index=False)
+    print("\n[3/4] Running Week 5 Explainable AI & 13-Region Subgroup Audit...")
+    best_model_name = "RandomForest"
+    best_pipe = curves[best_model_name]["pipeline"]
+    best_probs = curves[best_model_name]["probs"]
+    best_thresh = curves[best_model_name]["threshold"]
+
+    imp_df = compute_global_feature_importance(
+        best_pipe, X_test, y_test, scoring="average_precision", n_repeats=15, seed=42
+    )
+    subgroup_df = evaluate_subgroup_performance(
+        X_test, y_test, best_probs, group_col="region", threshold=best_thresh
+    )
+    error_cases = extract_error_analysis_cases(
+        X_test, y_test, best_probs, threshold=best_thresh, top_k=5
+    )
+
+    print("\nTop 8 Features by Permutation Importance (2025 Test Set):")
+    print(imp_df.head(8).to_string(index=False))
+
+    print("\n[4/4] Generating Publication Figures & Saving Reports...")
+    generate_report_figures(reg_df, curves, ablation_df, imp_df, subgroup_df)
+
+    bench_df.to_csv(REPORTS_DIR / "benchmark_comparison.csv", index=False)
+    ablation_df.to_csv(REPORTS_DIR / "ablation_study.csv", index=False)
     imp_df.to_csv(REPORTS_DIR / "feature_importance.csv", index=False)
     subgroup_df.to_csv(REPORTS_DIR / "regional_subgroup_audit.csv", index=False)
 
     summary_payload = {
+        "data_provenance": "100% Official ELSTAT SDT04 Aggregated Tables (Zero Synthetic Data)",
         "environment": {
             "python_version": platform.python_version(),
             "scikit_learn_version": sklearn.__version__,
@@ -620,24 +425,20 @@ def main() -> None:
             "pandas_version": pd.__version__,
             "random_seed": 42,
         },
-        "track_a_official_elstat_regional": track_a_df.to_dict(orient="records"),
-        "track_b_micro_and_waze_ablation": track_b_df.to_dict(orient="records"),
-        "top_10_features": imp_df.head(10).to_dict(orient="records"),
+        "benchmark_models_2025_test": bench_df.to_dict(orient="records"),
+        "feature_group_ablation_2025_test": ablation_df.to_dict(orient="records"),
+        "permutation_feature_importance": imp_df.to_dict(orient="records"),
         "regional_subgroup_audit": subgroup_df.to_dict(orient="records"),
+        "error_analysis_counts": {
+            "true_positives_sample": len(error_cases["true_positives"]),
+            "false_positives_sample": len(error_cases["false_positives"]),
+            "false_negatives_sample": len(error_cases["false_negatives"]),
+        },
     }
     with open(REPORTS_DIR / "benchmark_metrics.json", "w", encoding="utf-8") as f:
         json.dump(summary_payload, f, indent=2, ensure_ascii=False)
 
-    print("\n[4/4] Saved artifacts:")
-    print(f"  - {REPORTS_DIR / 'benchmark_comparison.csv'}")
-    print(f"  - {REPORTS_DIR / 'benchmark_metrics.json'}")
-    print(f"  - {REPORTS_DIR / 'feature_importance.csv'}")
-    print(f"  - {REPORTS_DIR / 'regional_subgroup_audit.csv'}")
-    print(f"  - {FIGURES_DIR / 'elstat_regional_paradox_greece.png'}")
-    print(f"  - {FIGURES_DIR / 'benchmark_roc_pr_curves.png'}")
-    print(f"  - {FIGURES_DIR / 'feature_importance_and_ablation.png'}")
-    print(f"  - {FIGURES_DIR / 'regional_subgroup_calibration.png'}")
-    print("=" * 78)
+    print("=" * 80)
 
 
 if __name__ == "__main__":

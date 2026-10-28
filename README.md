@@ -1,59 +1,61 @@
 # Road Safety ML Greece
 
-An explainable, reproducible machine learning project analyzing road traffic collision severity (**KSI — Killed or Seriously Injured**) in Greece using official **Hellenic Statistical Authority (ELSTAT)** open data and strictly audited scikit-learn pipelines.
+An explainable, reproducible machine learning project analyzing road traffic collision severity (**KSI — Killed or Seriously Injured**) in Greece using **100% official Hellenic Statistical Authority (ELSTAT SDT04)** open data and strictly audited `scikit-learn` pipelines.
+
+> **Strict Scientific Integrity Policy**: This repository operates **exclusively on official, verified ELSTAT statistical tables** (`2015–2024` national series and `2021–2025` regional monthly panel across all 13 Greek NUTS-2 regions). **Zero synthetic, Monte Carlo, or unverified crowdsourced Waze datasets are used.**
 
 ---
 
 ## Overview: 5 Key Questions Answered
 
 ### 1. What problem does this project solve?
-Road traffic collisions in Greece exhibit a pronounced structural paradox: while urban centers like **Attica** account for over **53%** of all injury collisions, their fatality and serious injury (KSI) rate per crash (~6.5%) is less than one-third that of rural and island regions such as **Crete, the Peloponnese, South Aegean, and Central Greece** (where 18%–25% of injury crashes result in death or severe trauma).
+Official ELSTAT road safety statistics reveal a structural paradox across Greece: while metropolitan **Attica** accounts for over **53.5%** of all injury collisions nationally, its fatality and serious injury (**KSI**) rate per collision (~6.5%) is less than one-third that of rural and island regions such as **Crete, the Peloponnese, South Aegean, and Central Greece** (where **18%–25%** of injury collisions result in death or severe trauma).
 
-This repository provides a leak-free machine learning framework that:
-* **Track A (Official ELSTAT Regional Panel)**: Predicts elevated monthly regional KSI severity regimes (`target_high_ksi`) across all 13 Greek NUTS-2 regions using strictly lagged historical and structural indicators.
-* **Track B (Event-Level Severity Pipeline & Ablation Suite)**: Benchmarks classification models (`DummyClassifier`, `DecisionTree`, `RandomForest`, `HistGradientBoosting`, `XGBoost`) for estimating conditional KSI probability $P(\text{KSI}=1 \mid \mathbf{x})$ given pre-collision road, lighting, weather, and vehicle attributes.
+This repository implements an end-to-end, leak-free machine learning pipeline that predicts whether a Greek NUTS-2 region in a given month enters a **Severe KSI Regime** (`target_high_ksi = 1` when `ksi_severity_rate >= 0.21`) using strictly pre-period information: calendar seasonality, structural road exposure, and historical autoregressive lags ($t-1, t-2, t-3, t-12$).
 
-### 2. What data are used (and what are their exact boundaries)?
-We enforce a strict separation between **official empirical statistics** and **synthetic pipeline benchmarks**:
-* **`data/elstat_national_annual_2015_2024.csv` (Empirical Official Data)**: Verified national annual totals from ELSTAT Survey `SDT04` (e.g., 2021: 10,454 accidents / 624 dead; 2022: 10,487 / 654; 2023: 10,553 / 646; 2024: 11,000 / 664).
-* **`data/elstat_regional_monthly_panel_2021_2025.csv` (Empirical Regional Panel — Track A)**: 780 regional-month observations (`13 NUTS-2 Regions × 60 Months`, 2021–2025).
-* **`data/synthetic_benchmark_collisions.csv` (Synthetic Event-Level Benchmark — Track B)**: Because row-level DOTA police microdata in Greece require a formal statistical confidentiality application to ELSTAT, we provide an explicitly labeled synthetic benchmark ($N = 25,000$ rows) calibrated to ELSTAT marginal distributions strictly to test event-level feature engineering, anti-leakage guards, and explainability modules.
+### 2. What data are used?
+* **[`data/elstat_national_annual_2015_2024.csv`](data/elstat_national_annual_2015_2024.csv)**: Verified official national annual totals from ELSTAT Survey `SDT04` (e.g., `2021`: 10,454 injury accidents / 624 killed / 610 serious; `2022`: 10,487 / 654 / 664; `2023`: 10,553 / 646 / 659; `2024`: 11,000 / 664 / 568).
+* **[`data/elstat_regional_monthly_panel_2021_2025.csv`](data/elstat_regional_monthly_panel_2021_2025.csv)**: Official regional monthly panel (`13 Greek NUTS-2 Regions × 60 Months = 780 observations`, `2021–2025`).
+* *Note on Event-Level Microdata*: Because row-level Greek police DOTA records require a confidential statistical research application to ELSTAT, we model Greek public data strictly at its authentic `Region × Month` unit of observation (while event-level crash modeling on 513,801 real police records is maintained in our companion UK STATS19 repository, [`KSI-Accident-Severity-Prediction`](https://github.com/dppel/KSI-Accident-Severity-Prediction)).
 
-### 3. How is the pipeline evaluated?
-* **Strict Chronological Split**: `2021–2023` (Train) $\rightarrow$ `2024` (Validation / Threshold Calibration) $\rightarrow$ `2025` (Held-Out Test Set). Random shuffling is prohibited to prevent temporal leakage.
-* **Programmatic Anti-Leakage Guards (`src/road_safety/data_validation.py`)**:
-  * Automatically blocks post-accident outcome columns (`number_of_casualties`, `fatal_accidents`, `did_police_officer_attend_scene_of_accident`) from entering `X`.
-  * Enforces target immutability (`assert_target_immutable`) so feature engineering can never alter ground-truth labels `y`.
-* **Imbalanced Classification Metrics**: Evaluated via **PR-AUC (Average Precision)**, **ROC-AUC** (with 95% bootstrap confidence intervals), **F1-score**, **Precision**, **Recall**, **Specificity**, **Brier Score**, and explicit **Confusion Matrices**.
+### 3. How is the pipeline evaluated without data leakage?
+* **Strict Chronological Split**: `2021–2023` (**Train**, $N=468$) $\rightarrow$ `2024` (**Validation / Threshold Calibration**, $N=156$) $\rightarrow$ `2025` (**Held-Out Test Set**, $N=156$). Random shuffling is prohibited.
+* **Programmatic Anti-Leakage Guards ([`src/road_safety/data_validation.py`](src/road_safety/data_validation.py))**:
+  * `validate_no_leakage(X)`: Automatically blocks contemporaneous outcome variables (`ksi_accidents`, `fatal_accidents`, `serious_accidents`, `slight_accidents`, `ksi_severity_rate`, `total_accidents`) from entering `X`.
+  * `assert_target_immutable(y_before, y_after)`: Guarantees that feature engineering never modifies the ground-truth target `y`.
+* **Uncertainty Quantification**: All test metrics are evaluated on the exact same 2025 partition with **95% non-parametric bootstrap confidence intervals**.
 
-### 4. What are the main results?
+### 4. What are the main results on the 2025 Held-Out Test Set?
 
-#### Track A — Official ELSTAT Regional Monthly Panel (2025 Test Set, $N = 156$)
-| Model | ROC-AUC (95% CI) | PR-AUC | F1 | Precision | Recall |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| `DummyClassifier (Baseline)` | `0.5000 [0.5000, 0.5000]` | `0.7885` | `0.8817` | `0.7885` | `1.0000` |
-| `DecisionTree` | `0.9068 [0.8321, 0.9684]` | `0.9566` | `0.9647` | `0.9318` | `1.0000` |
-| `RandomForest` | **`0.9512 [0.9036, 0.9846]`** | **`0.9855`** | **`0.9647`** | **`0.9318`** | **`1.0000`** |
-| `HistGradientBoosting` | `0.9377 [0.8835, 0.9756]` | `0.9808` | `0.9565` | `0.9308` | `0.9837` |
-| `XGBoost` | `0.9377 [0.8811, 0.9775]` | `0.9808` | `0.9565` | `0.9308` | `0.9837` |
+#### 5-Model Benchmark on Official ELSTAT Regional Panel (`2025` Test Set, $N = 156$)
+| Model | ROC-AUC (95% CI) | PR-AUC | F1-Score | Precision | Recall | Brier Score |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `DummyClassifier (Baseline)` | `0.5000 [0.5000, 0.5000]` | `0.4679` | `0.0000` | `0.0000` | `0.0000` | `0.2496` |
+| `DecisionTree` | `0.7958 [0.7209, 0.8642]` | `0.7522` | `0.7579` | `0.6154` | `0.9863` | `0.1903` |
+| `RandomForest` | **`0.8567 [0.7973, 0.9105]`** | **`0.8374`** | `0.7594` | `0.6228` | `0.9726` | **`0.1552`** |
+| `HistGradientBoosting` | `0.8199 [0.7509, 0.8808]` | `0.8036` | `0.7543` | **`0.6471`** | `0.9041` | `0.1919` |
+| `XGBoost` | `0.8498 [0.7835, 0.9043]` | `0.8259` | **`0.7609`** | `0.6306` | `0.9589` | `0.1597` |
 
-#### Track B — Event-Level Benchmark & Honest Waze Ablation Study (2025 Test Set, $N = 5,065$)
-| Model | ROC-AUC (95% CI) | PR-AUC | F1 | Precision | Recall |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| `DummyClassifier (Baseline)` | `0.5000 [0.5000, 0.5000]` | `0.1338` | `0.0000` | `0.0000` | `0.0000` |
-| `DecisionTree` | `0.7021 [0.6803, 0.7228]` | `0.2572` | `0.3232` | `0.3111` | `0.3363` |
-| `RandomForest` | **`0.7245 [0.7039, 0.7472]`** | **`0.3023`** | `0.3620` | `0.2746` | **`0.5310`** |
-| `HistGradientBoosting` | `0.7213 [0.7015, 0.7452]` | `0.2967` | **`0.3649`** | **`0.2962`** | `0.4749` |
-| `XGBoost` | `0.7171 [0.6969, 0.7386]` | `0.2885` | `0.3445` | `0.2839` | `0.4381` |
-| `HistGradientBoosting (+Unverified Waze Proxy, y Immutable)` | `0.7141 [0.6928, 0.7361]` | `0.2889` | `0.3576` | `0.3035` | `0.4351` |
+#### Empirical Feature Group Ablation Study (`2025` Test Set)
+| Feature Subset | Features | ROC-AUC (95% CI) | PR-AUC | F1-Score |
+| :--- | :---: | :---: | :---: | :---: |
+| `1. Calendar & Seasonality Only` | 4 | `0.5805 [0.4954, 0.6586]` | `0.5658` | `0.6376` |
+| `2. Calendar + NUTS-2 Region` | 5 | **`0.8404 [0.7717, 0.8971]`** | **`0.8298`** | **`0.7735`** |
+| `3. Calendar + Structural Exposure (Urban & Moto Share)` | 6 | `0.8320 [0.7538, 0.8907]` | `0.8141` | `0.7660` |
+| `4. Full Baseline (+ Autoregressive Lags t-1, t-2, t-3, t-12)` | 14 | `0.8199 [0.7509, 0.8808]` | `0.8036` | `0.7543` |
 
-> **Key Ablation Finding (`docs/CODE_AUDIT_REPORT.md`)**: When target immutability (`assert_target_immutable`) is enforced so `target_ksi` is never modified during feature enrichment, adding heuristic/simulated Waze proxy features yields zero artificial gain (`ROC-AUC 0.7213 -> 0.7141`). Real predictive lift from crowdsourced telemetry requires verified historical pre-collision partner feeds.
+#### Top Global Features by Permutation Importance (`RandomForest`, 2025 Test Set)
+1. **`lag_12m_ksi_rate`** (`+0.0440` PR-AUC drop) — Regional KSI severity rate in the same calendar month one year earlier.
+2. **`urban_ratio`** (`+0.0254`) — Structural proportion of urban vs. rural road network collisions.
+3. **`lag_12m_total_accidents`** (`+0.0186`) — Prior-year same-month collision volume.
+4. **`lag_1m_total_accidents`** (`+0.0174`) — Immediate prior-month collision volume.
+5. **`motorcycle_share`** (`+0.0162`) — Regional two-wheeler involvement rate.
 
 ### 5. What are the limitations?
-* Public ELSTAT tables are aggregated by region and month; row-level Greek DOTA microdata require confidential research accreditation.
-* Only collisions involving at least one injured or killed person are recorded in ELSTAT SDT04 (property-damage-only crashes are excluded).
-* Feature importances reflect statistical associations within the observational distribution, not causal effects of road engineering interventions.
-* Full details are documented in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) and [`docs/CODE_AUDIT_REPORT.md`](docs/CODE_AUDIT_REPORT.md).
+* **Regional Granularity**: Predictions apply to `NUTS-2 Region × Month` aggregates ($N=780$), not individual street intersections.
+* **Sample Size**: Because Greece has 13 NUTS-2 regions, the held-out 2025 test partition comprises $13 \times 12 = 156$ observations; bootstrap 95% confidence intervals are explicitly reported.
+* **Injury Collisions Only**: ELSTAT `SDT04` records only collisions involving death or bodily injury (property-damage-only incidents are excluded).
+* Full documentation is available in [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md) and [`docs/CODE_AUDIT_REPORT.md`](docs/CODE_AUDIT_REPORT.md).
 
 ---
 
@@ -64,14 +66,14 @@ road-safety-ml-greece/
 ├── README.md
 ├── LICENSE
 ├── pyproject.toml
+├── run.py
 ├── .gitignore
 ├── configs/
 │   └── baseline.yaml
 ├── data/
 │   ├── README.md
 │   ├── elstat_national_annual_2015_2024.csv
-│   ├── elstat_regional_monthly_panel_2021_2025.csv
-│   └── synthetic_benchmark_collisions.csv
+│   └── elstat_regional_monthly_panel_2021_2025.csv
 ├── notebooks/
 │   └── 01_exploratory_analysis.ipynb
 ├── src/
@@ -83,7 +85,7 @@ road-safety-ml-greece/
 │       ├── train.py
 │       ├── evaluate.py
 │       ├── explain.py
-│       └── waze_ablation.py
+│       └── elstat_updater.py
 ├── app/
 │   └── streamlit_app.py
 ├── tests/
@@ -93,6 +95,9 @@ road-safety-ml-greece/
 ├── reports/
 │   ├── figures/
 │   ├── benchmark_comparison.csv
+│   ├── ablation_study.csv
+│   ├── feature_importance.csv
+│   ├── regional_subgroup_audit.csv
 │   ├── benchmark_metrics.json
 │   └── model_card.md
 └── docs/
@@ -107,28 +112,18 @@ road-safety-ml-greece/
 
 ## Quickstart & Reproducibility
 
-### 1. Install Dependencies
 ```bash
-pip install -e ".[boosting,explain,app,dev]"
-```
+# 1. Run the entire pipeline (Validation -> Train -> Benchmark -> Ablation -> Plots)
+python run.py
 
-### 2. Run the End-to-End Training, Benchmark & Ablation Pipeline
-```bash
-python -m road_safety.train
-```
-This single command validates schemas, executes Track A and Track B benchmarks, runs the Waze ablation study, exports metrics to `reports/benchmark_comparison.csv`, and generates all diagnostic plots in `reports/figures/`.
-
-### 3. Run the Automated Unit Test Suite
-```bash
+# 2. Run the automated unit test suite (10/10 tests)
 pytest
-```
 
-### 4. Launch the Interactive Streamlit Dashboard
-```bash
+# 3. Launch the interactive Streamlit dashboard
 streamlit run app/streamlit_app.py
 ```
 
 ---
 
 ## License & Citation
-Released under the [MIT License](LICENSE). Official statistical tables are attributed to the **Hellenic Statistical Authority (ELSTAT)** (*Road Traffic Accidents, SDT04*).
+Released under the [MIT License](LICENSE). Statistical data are attributed to the **Hellenic Statistical Authority (ELSTAT)** (*Road Traffic Accidents, SDT04*).
