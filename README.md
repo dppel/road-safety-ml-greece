@@ -85,6 +85,7 @@ road-safety-ml-greece/
 │       ├── train.py
 │       ├── evaluate.py
 │       ├── explain.py
+│       ├── forecast.py
 │       └── elstat_updater.py
 ├── app/
 │   └── streamlit_app.py
@@ -98,6 +99,7 @@ road-safety-ml-greece/
 │   ├── ablation_study.csv
 │   ├── feature_importance.csv
 │   ├── regional_subgroup_audit.csv
+│   ├── regional_forecast_next_12m.csv
 │   ├── benchmark_metrics.json
 │   └── model_card.md
 └── docs/
@@ -105,7 +107,8 @@ road-safety-ml-greece/
     ├── DATA_DICTIONARY.md
     ├── METHODOLOGY.md
     ├── LIMITATIONS.md
-    └── CODE_AUDIT_REPORT.md
+    ├── CODE_AUDIT_REPORT.md
+    └── POLICY_RECOMMENDATIONS.md
 ```
 
 ---

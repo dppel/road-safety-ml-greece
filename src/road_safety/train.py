@@ -52,6 +52,10 @@ from road_safety.features import (
     build_regional_panel_features,
     extract_regional_X_y,
 )
+from road_safety.forecast import (
+    generate_prospective_12m_forecast,
+    save_forecast_heatmap,
+)
 from road_safety.preprocessing import build_preprocessing_transformer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -408,13 +412,31 @@ def main() -> None:
     print("\nTop 8 Features by Permutation Importance (2025 Test Set):")
     print(imp_df.head(8).to_string(index=False))
 
-    print("\n[4/4] Generating Publication Figures & Saving Reports...")
+    print("\n[4/5] Running 2026 Prospective 12-Month Regional Forecast & Policy Engine...")
+    forecast_df = generate_prospective_12m_forecast(
+        reg_df, forecast_year=2026, high_ksi_threshold=0.21, seed=42
+    )
+    august_forecast = forecast_df[forecast_df["month"] == 8][
+        [
+            "region",
+            "predicted_ksi_rate_pct",
+            "severe_regime_prob_pct",
+            "expected_ksi_accidents",
+            "risk_tier",
+        ]
+    ]
+    print("\nPeak Summer Early-Warning Forecast (August 2026 across all 13 Greek Regions):")
+    print(august_forecast.to_string(index=False))
+
+    print("\n[5/5] Generating Publication Figures & Saving Reports...")
     generate_report_figures(reg_df, curves, ablation_df, imp_df, subgroup_df)
+    save_forecast_heatmap(forecast_df, FIGURES_DIR / "regional_forecast_heatmap.png")
 
     bench_df.to_csv(REPORTS_DIR / "benchmark_comparison.csv", index=False)
     ablation_df.to_csv(REPORTS_DIR / "ablation_study.csv", index=False)
     imp_df.to_csv(REPORTS_DIR / "feature_importance.csv", index=False)
     subgroup_df.to_csv(REPORTS_DIR / "regional_subgroup_audit.csv", index=False)
+    forecast_df.to_csv(REPORTS_DIR / "regional_forecast_next_12m.csv", index=False)
 
     summary_payload = {
         "data_provenance": "100% Official ELSTAT SDT04 Aggregated Tables (Zero Synthetic Data)",

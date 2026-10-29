@@ -46,3 +46,21 @@ def test_bootstrap_ci_brackets_point_estimate():
     low, high = bootstrap_metric_ci(y, probs, n_bootstraps=100, seed=42)
     assert low <= high
     assert 0.5 <= low <= 1.0
+
+
+def test_prospective_forecast_and_policy_recommendations():
+    from pathlib import Path
+    import pandas as pd
+    from road_safety.forecast import generate_prospective_12m_forecast
+
+    panel_path = Path(__file__).resolve().parents[1] / "data" / "elstat_regional_monthly_panel_2021_2025.csv"
+    df_panel = pd.read_csv(panel_path)
+    df_panel = df_panel[df_panel["year"].between(2021, 2025)].copy()
+
+    fc_df = generate_prospective_12m_forecast(df_panel, forecast_year=2026, seed=42)
+    # 13 regions x 12 months = 156 prospective predictions
+    assert len(fc_df) == 156
+    assert (fc_df["predicted_ksi_rate"].between(0.01, 0.99)).all()
+    assert (fc_df["severe_regime_prob"].between(0.0, 1.0)).all()
+    assert (fc_df["recommended_interventions"].str.len() > 20).all()
+
