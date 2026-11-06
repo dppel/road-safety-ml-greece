@@ -226,6 +226,42 @@ st.markdown(
         border-radius: 16px !important;
         padding: 1.25rem 1.35rem !important;
         box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.05) !important;
+        color: #0f172a !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] p,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] li,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] ul,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] ol,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] strong,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] b,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stWidgetLabel"] p,
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stCaptionContainer"] p {
+        color: #0f172a !important;
+    }
+    div.stButton > button[kind="primary"] p {
+        color: #ffffff !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] code {
+        background: #eff6ff !important;
+        color: #1e3a8a !important;
+        border: 1px solid #bfdbfe !important;
+        padding: 0.12rem 0.42rem !important;
+        border-radius: 6px !important;
+        font-weight: 700 !important;
+        font-size: 0.82rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] blockquote {
+        background: #f8fafc !important;
+        border-left: 4px solid #2563eb !important;
+        padding: 0.65rem 0.9rem !important;
+        border-radius: 8px !important;
+        color: #1e293b !important;
+        margin: 0.4rem 0 !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] blockquote p {
+        color: #1e293b !important;
+        font-weight: 500 !important;
+        margin: 0 !important;
     }
     .section-header-bar {
         display: flex;
@@ -3273,7 +3309,7 @@ elif section == "🧠 8. Κέντρο Λήψης Αποφάσεων (Human-in-th
         chosen_rows = scored_df[scored_df["intervention_id"].isin(final_selected_ids)].copy()
         imm_rows = chosen_rows[chosen_rows["deployment_horizon"] == "24H_CRITICAL"]
         seas_rows = chosen_rows[chosen_rows["deployment_horizon"] == "SEASONAL_30D"]
-        struct_rows = chosen_rows[chosen_rows["deployment_horizon"] == "STRUCTURAL_6M"]
+        struct_rows = chosen_rows[chosen_rows["deployment_horizon"].isin(["ANNUAL_INFRA", "STRUCTURAL_6M"])]
 
         def _fmt_phase_items(df_sub: pd.DataFrame, fallback_txt: str) -> str:
             if df_sub.empty:
@@ -3390,29 +3426,71 @@ elif section == "🧠 8. Κέντρο Λήψης Αποφάσεων (Human-in-th
                     unsafe_allow_html=True,
                 )
                 agencies_str = ", ".join(final_eval["agencies_involved"]) if final_eval["agencies_involved"] else "—"
-                actions_md = "\n".join([f"- **{nm}** (`{hz}` — {ag})" for nm, hz, ag in zip(chosen_rows["name_el"], chosen_rows["horizon_label_el"], chosen_rows["lead_agency_el"])]) or "- *(Καμία επιλεγμένη δράση)*"
-                protocol_md = f"""**ΠΡΑΚΤΙΚΟ ΛΗΨΗΣ ΑΠΟΦΑΣΗΣ ΟΔΙΚΗΣ ΑΣΦΑΛΕΙΑΣ (HITL)**
-- **Περιφέρεια & Μήνας:** `{hitl_reg}` | `{month_names_hitl[hitl_month]}`
-- **Επίπεδο Κρισιμότητας:** `{diagnosis['urgency_level']}` ({diagnosis['criticality_index']}/100)
-- **Υπεύθυνος Διοίκησης (Human-in-the-Loop):** `{commander_role}`
-- **Κατάσταση Απόφασης:** `{decision_status}`
-- **Εμπλεκόμενοι Φορείς Εκτέλεσης:** {agencies_str}
-- **Προϋπολογισμός & Προσωπικό:** `€{final_eval['total_cost_eur_k']:.0f}K` | `{final_eval['total_personnel']} μονάδες πεδίου`
-- **Αναμενόμενο Αποτέλεσμα:** Μείωση KSI κατά **`-{final_eval['combined_ksi_reduction_pct']:.1f}%`** (`{final_eval['annual_equiv_ksi_saved']:.1f}` αποτρεπόμενα KSI / έτος, Όφελος **`€{final_eval['socioeconomic_benefit_eur_m']:.2f}M`**, ROI **`{final_eval['portfolio_roi']:.1f}×`**)
+                actions_md = "\n".join([f"- **{nm}** ({hz} — {ag})" for nm, hz, ag in zip(chosen_rows["name_el"], chosen_rows["horizon_label_el"], chosen_rows["lead_agency_el"])]) or "- *(Καμία επιλεγμένη δράση)*"
+                actions_html_items = "".join(
+                    [
+                        f"<li style='margin-bottom:0.32rem; color:#0f172a;'><b>{nm}</b> "
+                        f"<span style='background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:0.08rem 0.45rem; border-radius:6px; font-size:0.75rem; font-weight:700;'>{hz}</span> "
+                        f"<span style='color:#475569; font-size:0.8rem;'>— {ag}</span></li>"
+                        for nm, hz, ag in zip(
+                            chosen_rows["name_el"],
+                            chosen_rows["horizon_label_el"],
+                            chosen_rows["lead_agency_el"],
+                        )
+                    ]
+                ) or "<li style='color:#64748b;'><i>Καμία επιλεγμένη δράση</i></li>"
 
-**Εγκεκριμένες Δράσεις Πεδίου & Χρονικός Ορίζοντας:**
+                protocol_html = f"""
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:12px; padding:1rem 1.15rem; color:#0f172a; font-size:0.86rem; line-height:1.55; margin-bottom:0.75rem;">
+                    <div style="font-size:0.94rem; font-weight:800; color:#0f172a; border-bottom:2px solid #cbd5e1; padding-bottom:0.45rem; margin-bottom:0.65rem;">
+                        ΠΡΑΚΤΙΚΟ ΛΗΨΗΣ ΑΠΟΦΑΣΗΣ ΟΔΙΚΗΣ ΑΣΦΑΛΕΙΑΣ (HITL)
+                    </div>
+                    <div style="margin-bottom:0.25rem;"><b>• Περιφέρεια & Μήνας:</b> <span style="color:#1e3a8a; font-weight:700;">{hitl_reg}</span> | <span style="color:#1e3a8a; font-weight:700;">{month_names_hitl[hitl_month]}</span></div>
+                    <div style="margin-bottom:0.25rem;"><b>• Επίπεδο Κρισιμότητας:</b> <span style="color:#b91c1c; font-weight:700;">{diagnosis['urgency_level']} ({diagnosis['criticality_index']}/100)</span></div>
+                    <div style="margin-bottom:0.25rem;"><b>• Υπεύθυνος Διοίκησης (HITL):</b> <span style="color:#0f172a; font-weight:600;">{commander_role}</span></div>
+                    <div style="margin-bottom:0.25rem;"><b>• Κατάσταση Απόφασης:</b> <span style="color:#047857; font-weight:700;">{decision_status}</span></div>
+                    <div style="margin-bottom:0.25rem;"><b>• Εμπλεκόμενοι Φορείς Εκτέλεσης:</b> <span style="color:#1e293b;">{agencies_str}</span></div>
+                    <div style="margin-bottom:0.25rem;"><b>• Προϋπολογισμός & Προσωπικό:</b> <span style="background:#fffbeb; color:#b45309; border:1px solid #fde68a; padding:0.08rem 0.45rem; border-radius:6px; font-weight:700;">€{final_eval['total_cost_eur_k']:.0f}K</span> | <span style="font-weight:700;">{final_eval['total_personnel']} μονάδες πεδίου</span></div>
+                    <div style="margin-bottom:0.65rem;"><b>• Αναμενόμενο Αποτέλεσμα:</b> Μείωση KSI κατά <b style="color:#047857;">-{final_eval['combined_ksi_reduction_pct']:.1f}%</b> (<b>{final_eval['annual_equiv_ksi_saved']:.1f}</b> αποτρεπόμενα KSI/έτος, Όφελος <b style="color:#047857;">€{final_eval['socioeconomic_benefit_eur_m']:.2f}M</b>, ROI <b>{final_eval['portfolio_roi']:.1f}×</b>)</div>
+                    <div style="font-weight:800; color:#0f172a; margin-top:0.5rem; margin-bottom:0.25rem;">Εγκεκριμένες Δράσεις Πεδίου & Χρονικός Ορίζοντας:</div>
+                    <ul style="margin:0 0 0.65rem 1.15rem; padding:0;">{actions_html_items}</ul>
+                    <div style="font-weight:800; color:#0f172a; margin-bottom:0.25rem;">Επόμενα Επιχειρησιακά Βήματα (Action Plan):</div>
+                    <ol style="margin:0 0 0.65rem 1.15rem; padding:0; color:#0f172a;">
+                        <li><b>Φάση 1 (0–72 Ώρες):</b> Άμεση ανάπτυξη <b>{len(imm_rows)}</b> επειγουσών δράσεων πεδίου.</li>
+                        <li><b>Φάση 2 (1–3 Μήνες):</b> Ενεργοποίηση <b>{len(seas_rows)}</b> εποχικών/τακτικών παρεμβάσεων.</li>
+                        <li><b>Φάση 3 (3–12 Μήνες):</b> Υλοποίηση <b>{len(struct_rows)}</b> δομικών έργων υποδομής.</li>
+                        <li><b>Φάση 4 (Έλεγχος KPI):</b> Μηνιαία επαλήθευση πτώσης KSI σε <b>{final_eval['new_ksi_rate_pct']:.2f}%</b>.</li>
+                    </ol>
+                    <div style="font-weight:800; color:#0f172a; margin-bottom:0.25rem;">Αιτιολόγηση Διοίκησης:</div>
+                    <div style="background:#ffffff; border-left:4px solid #2563eb; border-radius:6px; padding:0.55rem 0.8rem; color:#1e293b; font-style:italic;">
+                        {human_notes}
+                    </div>
+                </div>
+                """
+
+                protocol_md = f"""ΠΡΑΚΤΙΚΟ ΛΗΨΗΣ ΑΠΟΦΑΣΗΣ ΟΔΙΚΗΣ ΑΣΦΑΛΕΙΑΣ (HITL)
+==================================================
+- Περιφέρεια & Μήνας: {hitl_reg} | {month_names_hitl[hitl_month]}
+- Επίπεδο Κρισιμότητας: {diagnosis['urgency_level']} ({diagnosis['criticality_index']}/100)
+- Υπεύθυνος Διοίκησης (Human-in-the-Loop): {commander_role}
+- Κατάσταση Απόφασης: {decision_status}
+- Εμπλεκόμενοι Φορείς Εκτέλεσης: {agencies_str}
+- Προϋπολογισμός & Προσωπικό: €{final_eval['total_cost_eur_k']:.0f}K | {final_eval['total_personnel']} μονάδες πεδίου
+- Αναμενόμενο Αποτέλεσμα: Μείωση KSI κατά -{final_eval['combined_ksi_reduction_pct']:.1f}% ({final_eval['annual_equiv_ksi_saved']:.1f} αποτρεπόμενα KSI / έτος, Όφελος €{final_eval['socioeconomic_benefit_eur_m']:.2f}M, ROI {final_eval['portfolio_roi']:.1f}×)
+
+Εγκεκριμένες Δράσεις Πεδίου & Χρονικός Ορίζοντας:
 {actions_md}
 
-**Επόμενα Επιχειρησιακά Βήματα (Action Plan):**
-1. **Φάση 1 (0–72 Ώρες):** Άμεση ανάπτυξη `{len(imm_rows)}` επειγουσών δράσεων πεδίου.
-2. **Φάση 2 (1–3 Μήνες):** Ενεργοποίηση `{len(seas_rows)}` εποχικών/τακτικών παρεμβάσεων.
-3. **Φάση 3 (3–12 Μήνες):** Υλοποίηση `{len(struct_rows)}` δομικών έργων υποδομής.
-4. **Φάση 4 (Έλεγχος KPI):** Μηνιαία επαλήθευση πτώσης KSI σε `{final_eval['new_ksi_rate_pct']:.2f}%`.
+Επόμενα Επιχειρησιακά Βήματα (Action Plan):
+1. Φάση 1 (0–72 Ώρες): Άμεση ανάπτυξη {len(imm_rows)} επειγουσών δράσεων πεδίου.
+2. Φάση 2 (1–3 Μήνες): Ενεργοποίηση {len(seas_rows)} εποχικών/τακτικών παρεμβάσεων.
+3. Φάση 3 (3–12 Μήνες): Υλοποίηση {len(struct_rows)} δομικών έργων υποδομής.
+4. Φάση 4 (Έλεγχος KPI): Μηνιαία επαλήθευση πτώσης KSI σε {final_eval['new_ksi_rate_pct']:.2f}%.
 
-**Αιτιολόγηση Διοίκησης:**
-> {human_notes}
+Αιτιολόγηση Διοίκησης:
+{human_notes}
 """
-                st.markdown(protocol_md)
+                st.markdown(protocol_html, unsafe_allow_html=True)
                 st.download_button(
                     label="📥 Λήψη Εγκεκριμένου Πρακτικού Απόφασης (.md / .txt)",
                     data=protocol_md.encode("utf-8"),
