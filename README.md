@@ -14,6 +14,8 @@ Official ELSTAT statistics highlight a sharp geographic split in how road trauma
 
 This project models monthly regional KSI severity (`target_high_ksi = 1` when `ksi_severity_rate >= 0.21`) and translates model forecasts into actionable regional interventions.
 
+![The Greek Road Safety Paradox: Urban Volume vs. Rural & Island Severity](reports/figures/01_greek_paradox_elstat.png)
+
 ---
 
 ## What's Inside
@@ -65,6 +67,25 @@ This project models monthly regional KSI severity (`target_high_ksi = 1` when `k
 | `2. Summer Island & Two-Wheeler Blitz` | `1,354` | `987` | `367` | `27.10%` | `€422.05M` |
 | `3. Interurban Highway & 2+1 Barrier Upgrade` | `1,354` | `969` | `385` | `28.43%` | `€442.75M` |
 | `4. Vision Zero Greece 2030 (All 5 Axes)` | `1,354` | **`788`** | **`566`** | **`41.80%`** | **`€650.90M`** |
+
+---
+
+## Visual Overview & Research Figures
+
+All figures below are generated automatically by `python run.py` and stored in [`reports/figures/`](reports/figures/):
+
+### 1. Out-of-Time ROC / PR Curves & Feature Group Ablation (`2025` Held-Out Test Set)
+![ROC and Precision-Recall Curves on Held-Out 2025 ELSTAT Test Set](reports/figures/benchmark_roc_pr_curves.png)
+![Permutation Feature Importance and Empirical Feature Group Ablation](reports/figures/feature_importance_and_ablation.png)
+
+### 2. Prospective 12-Month Regional Early-Warning Matrix (`2026` Horizon)
+![2026 Monthly Early-Warning Forecast Across All 13 Greek NUTS-2 Regions](reports/figures/02_summer_forecast_heatmap_2026.png)
+
+### 3. Counterfactual Policy Simulation & Regional KSI Reduction
+![What-If Policy Simulator: Quantifying Lives Saved & Socioeconomic ROI](reports/figures/03_policy_simulator_vision_zero.png)
+
+### 4. 10-Year Strategic Foresight (`2026–2035`) & EU Vision Zero Backcasting
+![10-Year Strategic Foresight (2026–2035) & Human-in-the-Loop Copilot](reports/figures/04_foresight_2026_2035_roadmap.png)
 
 ---
 
