@@ -1,0 +1,6 @@
+package_name,focus_area,baseline_annual_ksi_accidents,simulated_annual_ksi_accidents,annual_ksi_accidents_prevented,annual_ksi_reduction_pct,mean_regional_ksi_rate_pct,estimated_socioeconomic_benefit_eur_m
+0. Baseline (Business as Usual 2026),No new interventions,1354,1354,0,0.0,19.34,0.0
+1. Urban VRU & 30 km/h Shield (Αττική & Θεσσαλονίκη),"Urban 30 km/h zones, red-light/speed cameras & VRU crossings",1354,999,355,26.22,16.22,408.25
+2. Summer Island & Two-Wheeler Enforcement Blitz,"Helmet/alcohol checkpoints, rental fleet audits & island EMS",1354,987,367,27.1,15.28,422.05
+3. Interurban Highway & 2+1 Barrier Upgrade,"Median separation, forgiving roadsides & section control",1354,969,385,28.43,14.46,442.75
+4. Comprehensive Vision Zero Greece 2030 (All 5 Axes),Full national deployment across all 5 Safe System pillars,1354,788,566,41.8,12.9,650.9

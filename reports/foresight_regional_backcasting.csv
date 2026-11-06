@@ -1,0 +1,14 @@
+region,nuts2_code,zone_type,baseline_2026_ksi,eu_target_50pct_ksi,stress_2035_ksi,vision_zero_2030_ksi,vision_zero_2035_ksi,reduction_by_2035_pct,year_eu_target_achieved,cumulative_10yr_ksi_saved,cumulative_10yr_saved_vs_stress,cumulative_10yr_benefit_eur_m
+Attica (Αττική),EL30,Metropolitan Urban,400,200,434,279,178,55.5,2034,1242,1409,1428.3
+Central Macedonia (Κεντρική Μακεδονία),EL52,Metropolitan Urban,208,104,225,145,93,55.3,2034,645,731,741.75
+Peloponnese (Πελοπόννησος),EL65,Mainland Corridor,119,60,129,82,51,57.1,2034,381,430,438.15
+Crete (Κρήτη),EL43,Island / Tourism,116,58,136,79,49,57.8,2034,378,476,434.7
+Western Greece (Δυτική Ελλάδα),EL63,Mainland Corridor,112,56,121,76,47,58.0,2034,366,411,420.9
+South Aegean (Νότιο Αιγαίο),EL42,Island / Tourism,95,48,112,66,42,55.8,2034,295,377,339.25
+Thessaly (Θεσσαλία),EL61,Mainland Corridor,77,38,83,53,33,57.1,2034,247,279,284.05
+Central Greece (Στερεά Ελλάδα),EL64,Mainland Corridor,75,38,81,51,32,57.3,2034,241,272,277.15
+Eastern Macedonia & Thrace (ΑΜΘ),EL51,Mainland Corridor,56,28,61,39,25,55.4,2034,173,198,198.95
+Ionian Islands (Ιόνια Νησιά),EL62,Island / Tourism,38,19,45,27,17,55.3,2034,117,150,134.55
+Epirus (Ήπειρος),EL54,Mountainous / Mainland,25,12,27,17,11,56.0,2034,78,88,89.7
+North Aegean (Βόρειο Αιγαίο),EL41,Island / Tourism,19,10,22,13,8,57.9,2033,60,76,69.0
+Western Macedonia (Δυτική Μακεδονία),EL53,Mountainous / Mainland,14,7,15,10,6,57.1,2033,43,49,49.45

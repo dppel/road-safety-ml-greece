@@ -4,7 +4,7 @@
 1. Prototype script: `waze_feature_enrichment.py`
 2. Prototype notebook: `02_greece_elstat_road_safety_ksi.ipynb`
 
-In accordance with **Week 1 & Week 4** of the Road Safety ML Roadmap, we conducted a line-by-line audit of the initial Greek prototype scripts and remediated every methodological flaw so that `road-safety-ml-greece` operates **100% on official ELSTAT data with zero synthetic datasets**.
+We conducted a line-by-line audit of the initial Greek prototype scripts and remediated every methodological flaw so that `road-safety-ml-greece` operates exclusively on official ELSTAT data.
 
 ---
 

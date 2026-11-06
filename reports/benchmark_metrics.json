@@ -403,6 +403,58 @@
       "f1": 0.5
     }
   ],
+  "policy_simulation_packages_2026": [
+    {
+      "package_name": "0. Baseline (Business as Usual 2026)",
+      "focus_area": "No new interventions",
+      "baseline_annual_ksi_accidents": 1354,
+      "simulated_annual_ksi_accidents": 1354,
+      "annual_ksi_accidents_prevented": 0,
+      "annual_ksi_reduction_pct": 0.0,
+      "mean_regional_ksi_rate_pct": 19.34,
+      "estimated_socioeconomic_benefit_eur_m": 0.0
+    },
+    {
+      "package_name": "1. Urban VRU & 30 km/h Shield (Αττική & Θεσσαλονίκη)",
+      "focus_area": "Urban 30 km/h zones, red-light/speed cameras & VRU crossings",
+      "baseline_annual_ksi_accidents": 1354,
+      "simulated_annual_ksi_accidents": 999,
+      "annual_ksi_accidents_prevented": 355,
+      "annual_ksi_reduction_pct": 26.22,
+      "mean_regional_ksi_rate_pct": 16.22,
+      "estimated_socioeconomic_benefit_eur_m": 408.25
+    },
+    {
+      "package_name": "2. Summer Island & Two-Wheeler Enforcement Blitz",
+      "focus_area": "Helmet/alcohol checkpoints, rental fleet audits & island EMS",
+      "baseline_annual_ksi_accidents": 1354,
+      "simulated_annual_ksi_accidents": 987,
+      "annual_ksi_accidents_prevented": 367,
+      "annual_ksi_reduction_pct": 27.1,
+      "mean_regional_ksi_rate_pct": 15.28,
+      "estimated_socioeconomic_benefit_eur_m": 422.05
+    },
+    {
+      "package_name": "3. Interurban Highway & 2+1 Barrier Upgrade",
+      "focus_area": "Median separation, forgiving roadsides & section control",
+      "baseline_annual_ksi_accidents": 1354,
+      "simulated_annual_ksi_accidents": 969,
+      "annual_ksi_accidents_prevented": 385,
+      "annual_ksi_reduction_pct": 28.43,
+      "mean_regional_ksi_rate_pct": 14.46,
+      "estimated_socioeconomic_benefit_eur_m": 442.75
+    },
+    {
+      "package_name": "4. Comprehensive Vision Zero Greece 2030 (All 5 Axes)",
+      "focus_area": "Full national deployment across all 5 Safe System pillars",
+      "baseline_annual_ksi_accidents": 1354,
+      "simulated_annual_ksi_accidents": 788,
+      "annual_ksi_accidents_prevented": 566,
+      "annual_ksi_reduction_pct": 41.8,
+      "mean_regional_ksi_rate_pct": 12.9,
+      "estimated_socioeconomic_benefit_eur_m": 650.9
+    }
+  ],
   "error_analysis_counts": {
     "true_positives_sample": 5,
     "false_positives_sample": 5,

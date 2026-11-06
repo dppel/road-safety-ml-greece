@@ -8,9 +8,9 @@ operating exclusively on verified Hellenic Statistical Authority (ELSTAT SDT04) 
   2. Benchmarks DummyClassifier, DecisionTree, RandomForest, HistGradientBoosting,
      and XGBoost on the Official ELSTAT Regional Monthly Panel (780 observations,
      13 Greek NUTS-2 regions, 2021-2025).
-  3. Executes the Week 4 Empirical Feature Group Ablation Study (comparing Calendar-only,
+  3. Executes the Empirical Feature Group Ablation Study (comparing Calendar-only,
      Regional, Structural Exposure, and Autoregressive Lag feature groups on the 2025 test set).
-  4. Computes Week 5 permutation feature importances, subgroup audits across all 13 Greek
+  4. Computes permutation feature importances, subgroup audits across all 13 Greek
      regions, and error analysis cases (TP, FP, FN).
   5. Exports structured tables (`reports/benchmark_comparison.csv`, `reports/ablation_study.csv`,
      `reports/benchmark_metrics.json`) and publication-quality figures (`reports/figures/*.png`).
@@ -56,7 +56,18 @@ from road_safety.forecast import (
     generate_prospective_12m_forecast,
     save_forecast_heatmap,
 )
+from road_safety.foresight import (
+    compute_regional_backcasting_table,
+    generate_foresight_trajectories,
+    get_megatrends_matrix,
+    save_foresight_cone_figure,
+)
 from road_safety.preprocessing import build_preprocessing_transformer
+from road_safety.simulator import (
+    evaluate_policy_packages,
+    save_geospatial_risk_map,
+    save_policy_simulation_figure,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
@@ -196,7 +207,7 @@ def run_empirical_feature_ablation(
     seed: int = 42,
 ) -> pd.DataFrame:
     """
-    Week 4 Deliverable: Empirical Feature Group Ablation Study on Official ELSTAT Data.
+    Empirical Feature Group Ablation Study on Official ELSTAT Data.
     Evaluates the exact out-of-time contribution of each real feature group on the 2025 test set
     while guaranteeing 100% target immutability (`assert_target_immutable`).
     """
@@ -367,7 +378,7 @@ def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
     print("=" * 80)
-    print("ROAD SAFETY ML GREECE — OFFICIAL ELSTAT EMPIRICAL PIPELINE (v1.1.0, ZERO SYNTHETIC)")
+    print("ROAD SAFETY ML GREECE — ELSTAT REGIONAL KSI PIPELINE (v1.1.0)")
     print("=" * 80)
 
     nat_df, reg_df = load_official_elstat_datasets()
@@ -377,7 +388,7 @@ def main() -> None:
     print(f"[Data] Official ELSTAT Regional Panel  : {len(fe_df):,} rows (2021-2025, 13 NUTS-2 regions)")
     print(f"[Data] Severe KSI Regime Rate (>=21%)  : {fe_df['target_high_ksi'].mean():.2%}")
 
-    print("\n[1/4] Running 5-Model Benchmark on Held-Out 2025 ELSTAT Test Set...")
+    print("\n[1/7] Running 5-Model Benchmark on Held-Out 2025 ELSTAT Test Set...")
     bench_df, curves, X_test, y_test = run_elstat_model_benchmark(fe_df, seed=42)
     print(
         bench_df[
@@ -385,7 +396,7 @@ def main() -> None:
         ].to_string(index=False)
     )
 
-    print("\n[2/4] Running Week 4 Empirical Feature Group Ablation Study...")
+    print("\n[2/7] Running Empirical Feature Group Ablation Study...")
     ablation_df = run_empirical_feature_ablation(fe_df, seed=42)
     print(
         ablation_df[
@@ -393,7 +404,7 @@ def main() -> None:
         ].to_string(index=False)
     )
 
-    print("\n[3/4] Running Week 5 Explainable AI & 13-Region Subgroup Audit...")
+    print("\n[3/7] Running Explainability & 13-Region Subgroup Audit...")
     best_model_name = "RandomForest"
     best_pipe = curves[best_model_name]["pipeline"]
     best_probs = curves[best_model_name]["probs"]
@@ -412,7 +423,7 @@ def main() -> None:
     print("\nTop 8 Features by Permutation Importance (2025 Test Set):")
     print(imp_df.head(8).to_string(index=False))
 
-    print("\n[4/5] Running 2026 Prospective 12-Month Regional Forecast & Policy Engine...")
+    print("\n[4/7] Running 2026 Prospective 12-Month Regional Forecast & Policy Engine...")
     forecast_df = generate_prospective_12m_forecast(
         reg_df, forecast_year=2026, high_ksi_threshold=0.21, seed=42
     )
@@ -428,15 +439,59 @@ def main() -> None:
     print("\nPeak Summer Early-Warning Forecast (August 2026 across all 13 Greek Regions):")
     print(august_forecast.to_string(index=False))
 
-    print("\n[5/5] Generating Publication Figures & Saving Reports...")
+    print("\n[5/7] Running Counterfactual Policy Simulator & Geospatial Risk Mapping...")
+    policy_packages_df = evaluate_policy_packages(forecast_df)
+    print(
+        policy_packages_df[
+            [
+                "package_name",
+                "baseline_annual_ksi_accidents",
+                "simulated_annual_ksi_accidents",
+                "annual_ksi_accidents_prevented",
+                "annual_ksi_reduction_pct",
+                "estimated_socioeconomic_benefit_eur_m",
+            ]
+        ].to_string(index=False)
+    )
+
+    print("\n[6/7] Running 10-Year Strategic Foresight & Regional Backcasting (2026–2035)...")
+    foresight_traj_df = generate_foresight_trajectories(forecast_df, start_year=2026, end_year=2035)
+    backcast_df = compute_regional_backcasting_table(foresight_traj_df)
+    megatrends_df = get_megatrends_matrix()
+    print(
+        backcast_df[
+            [
+                "region",
+                "baseline_2026_ksi",
+                "eu_target_50pct_ksi",
+                "vision_zero_2035_ksi",
+                "year_eu_target_achieved",
+                "cumulative_10yr_ksi_saved",
+                "cumulative_10yr_benefit_eur_m",
+            ]
+        ].to_string(index=False)
+    )
+
+    print("\n[7/7] Generating Publication Figures & Saving Reports...")
     generate_report_figures(reg_df, curves, ablation_df, imp_df, subgroup_df)
     save_forecast_heatmap(forecast_df, FIGURES_DIR / "regional_forecast_heatmap.png")
+    save_policy_simulation_figure(
+        forecast_df, policy_packages_df, FIGURES_DIR / "policy_counterfactual_impact.png"
+    )
+    save_geospatial_risk_map(forecast_df, FIGURES_DIR / "greece_regional_risk_map.png")
+    save_foresight_cone_figure(
+        foresight_traj_df, backcast_df, FIGURES_DIR / "foresight_2026_2035_cone.png"
+    )
 
     bench_df.to_csv(REPORTS_DIR / "benchmark_comparison.csv", index=False)
     ablation_df.to_csv(REPORTS_DIR / "ablation_study.csv", index=False)
     imp_df.to_csv(REPORTS_DIR / "feature_importance.csv", index=False)
     subgroup_df.to_csv(REPORTS_DIR / "regional_subgroup_audit.csv", index=False)
     forecast_df.to_csv(REPORTS_DIR / "regional_forecast_next_12m.csv", index=False)
+    policy_packages_df.to_csv(REPORTS_DIR / "policy_simulation_scenarios.csv", index=False)
+    foresight_traj_df.to_csv(REPORTS_DIR / "foresight_trajectories_2026_2035.csv", index=False)
+    backcast_df.to_csv(REPORTS_DIR / "foresight_regional_backcasting.csv", index=False)
+    megatrends_df.to_csv(REPORTS_DIR / "foresight_megatrends_matrix.csv", index=False)
 
     summary_payload = {
         "data_provenance": "100% Official ELSTAT SDT04 Aggregated Tables (Zero Synthetic Data)",
@@ -451,6 +506,7 @@ def main() -> None:
         "feature_group_ablation_2025_test": ablation_df.to_dict(orient="records"),
         "permutation_feature_importance": imp_df.to_dict(orient="records"),
         "regional_subgroup_audit": subgroup_df.to_dict(orient="records"),
+        "policy_simulation_packages_2026": policy_packages_df.to_dict(orient="records"),
         "error_analysis_counts": {
             "true_positives_sample": len(error_cases["true_positives"]),
             "false_positives_sample": len(error_cases["false_positives"]),

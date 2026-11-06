@@ -154,8 +154,9 @@ def generate_prospective_12m_forecast(
     )
     reg_pipe.fit(X_hist, y_reg_hist)
 
-    # 3. Construct forward 12-month feature matrix from latest verified year (2025)
-    latest_year = int(fe_hist["year"].max())
+    # 3. Construct forward 12-month feature matrix from latest verified complete year (< forecast_year)
+    hist_prior = fe_hist[fe_hist["year"] < forecast_year]
+    latest_year = int(hist_prior["year"].max()) if not hist_prior.empty else int(fe_hist["year"].max())
     latest_df = fe_hist[fe_hist["year"] == latest_year].sort_values(["region", "month"]).copy()
 
     future_rows: List[Dict[str, object]] = []

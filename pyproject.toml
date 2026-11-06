@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "road-safety-ml-greece"
-version = "1.0.0"
-description = "Explainable machine learning pipeline for road traffic accident severity (KSI) analysis in Greece using official ELSTAT statistics."
+version = "1.1.0"
+description = "Machine learning pipeline and interactive decision-support dashboard for road traffic accident severity (KSI) in Greece using ELSTAT data."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ dependencies = [
     "matplotlib>=3.7.0",
     "seaborn>=0.12.0",
     "pyyaml>=6.0",
+    "plotly>=5.18.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,7 @@ explain = [
 ]
 app = [
     "streamlit>=1.28.0",
+    "plotly>=5.18.0",
 ]
 dev = [
     "pytest>=7.4.0",

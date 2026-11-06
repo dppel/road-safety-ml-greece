@@ -35,7 +35,7 @@ REGIONAL_NUMERIC_FEATURES: List[str] = [
 
 REGIONAL_CATEGORICAL_FEATURES: List[str] = ["region"]
 
-# Feature subsets for the Week 4 Empirical Feature Ablation Study
+# Feature subsets for the Empirical Feature Ablation Study
 ABLATION_FEATURE_GROUPS: Dict[str, Tuple[List[str], List[str]]] = {
     "1. Calendar & Seasonality Only": (
         ["month", "month_sin", "month_cos", "is_summer"],

@@ -1,7 +1,7 @@
 """
 Explainable AI & Subgroup Error Analysis (`explain.py`)
 =======================================================
-Implements Week 5 Deliverables:
+Provides:
   1. Global feature attribution via Permutation Importance & Tree SHAP (when installed).
   2. Subgroup performance & calibration audit across Greek NUTS-2 Regions and Urban vs. Rural roads.
   3. Concrete False Positive (FP) and False Negative (FN) case inspection.
